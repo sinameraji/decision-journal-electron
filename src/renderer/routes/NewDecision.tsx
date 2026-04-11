@@ -1,5 +1,5 @@
-import StubPage from './_StubPage'
+import DecisionForm from './DecisionForm'
 
 export default function NewDecision() {
-  return <StubPage title="New Decision" description="The decision capture flow is coming soon." />
+  return <DecisionForm mode="create" />
 }
