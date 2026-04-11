@@ -168,3 +168,31 @@ export function countDecisions(db: DB): number {
   const row = db.prepare('SELECT COUNT(*) as c FROM decisions').get() as { c: number }
   return row.c
 }
+
+function buildMatchQuery(raw: string): string {
+  const tokens = raw
+    .replace(/["*():\-]/g, ' ')
+    .split(/\s+/)
+    .filter((t) => t.length > 0)
+  if (tokens.length === 0) return ''
+  return tokens.map((t) => `"${t}"*`).join(' ')
+}
+
+export function searchDecisions(db: DB, rawQuery: string): Decision[] {
+  const q = buildMatchQuery(rawQuery)
+  if (!q) return []
+  const rows = db
+    .prepare(
+      `SELECT d.id, d.title, d.decided_at, d.review_at, d.mental_state, d.situation,
+              d.problem_statement, d.variables, d.complications, d.alternatives,
+              d.range_of_outcomes, d.expected_outcome, d.outcome, d.lessons_learned,
+              d.reviewed_at, d.created_at, d.updated_at, d.is_sample
+       FROM decisions d
+       JOIN decisions_fts ON decisions_fts.rowid = d.rowid
+       WHERE decisions_fts MATCH ?
+       ORDER BY bm25(decisions_fts), COALESCE(d.decided_at, d.created_at) DESC
+       LIMIT 200`
+    )
+    .all(q) as DecisionRow[]
+  return rows.map(rowToDecision)
+}

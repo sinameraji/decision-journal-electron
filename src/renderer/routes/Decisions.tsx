@@ -1,19 +1,17 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus } from 'lucide-react'
 import type { Decision } from '@shared/ipc-contract'
 import DecisionCard from '../components/DecisionCard'
 import ReauthModal from '../components/ReauthModal'
+import { useDecisionsStore } from '../store/decisions'
 
 export default function Decisions() {
   const navigate = useNavigate()
-  const [decisions, setDecisions] = useState<Decision[]>([])
+  const results = useDecisionsStore((s) => s.results)
+  const query = useDecisionsStore((s) => s.query)
+  const refresh = useDecisionsStore((s) => s.refresh)
   const [toDelete, setToDelete] = useState<Decision | null>(null)
-
-  const refresh = useCallback(async () => {
-    const rows = await window.api.decisions.list()
-    setDecisions(rows)
-  }, [])
 
   useEffect(() => {
     refresh()
@@ -27,6 +25,10 @@ export default function Decisions() {
     await refresh()
   }
 
+  const trimmedQuery = query.trim()
+  const searching = trimmedQuery !== ''
+  const empty = results.length === 0
+
   return (
     <div className="mx-auto max-w-[780px]">
       <div className="flex items-start justify-between">
@@ -35,7 +37,11 @@ export default function Decisions() {
             Your Decisions
           </h1>
           <p className="mt-1 text-[13px] text-text-muted">
-            {decisions.length} decision{decisions.length === 1 ? '' : 's'} recorded
+            {searching
+              ? empty
+                ? `No decisions match "${trimmedQuery}"`
+                : `${results.length} result${results.length === 1 ? '' : 's'} for "${trimmedQuery}"`
+              : `${results.length} decision${results.length === 1 ? '' : 's'} recorded`}
           </p>
         </div>
         <button
@@ -48,7 +54,7 @@ export default function Decisions() {
         </button>
       </div>
 
-      {decisions.length === 0 ? (
+      {empty && !searching ? (
         <div className="mt-16 rounded-2xl border border-dashed border-border bg-bg-elevated/40 px-8 py-16 text-center">
           <p className="font-serif text-[22px] text-text">No decisions yet</p>
           <p className="mt-2 text-[13px] text-text-muted">
@@ -65,7 +71,7 @@ export default function Decisions() {
         </div>
       ) : (
         <div className="mt-8 flex flex-col gap-3 pb-10">
-          {decisions.map((d) => (
+          {results.map((d) => (
             <DecisionCard key={d.id} decision={d} onRequestDelete={setToDelete} />
           ))}
         </div>

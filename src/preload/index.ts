@@ -28,6 +28,8 @@ const api: Api = {
   },
   decisions: {
     list: (): Promise<Decision[]> => ipcRenderer.invoke('decisions:list'),
+    search: (query: string): Promise<Decision[]> =>
+      ipcRenderer.invoke('decisions:search', query),
     get: (id: string): Promise<Decision | null> => ipcRenderer.invoke('decisions:get', id),
     create: (input: DecisionCreateInput): Promise<Decision> =>
       ipcRenderer.invoke('decisions:create', input),

@@ -17,6 +17,7 @@ import {
   deleteDecision,
   getDecision,
   listDecisions,
+  searchDecisions,
   updateDecision
 } from './db/decisions'
 import { applyThemeMode, loadThemePreference, saveThemePreference } from './theme'
@@ -203,6 +204,12 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('decisions:list', async () => {
     if (!session.db) return []
     return listDecisions(session.db)
+  })
+
+  ipcMain.handle('decisions:search', async (_evt, query: string) => {
+    if (!session.db) return []
+    if (typeof query !== 'string') return []
+    return searchDecisions(session.db, query)
   })
 
   ipcMain.handle('decisions:get', async (_evt, id: string) => {

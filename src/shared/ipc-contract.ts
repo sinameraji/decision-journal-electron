@@ -98,6 +98,7 @@ export interface Api {
   }
   decisions: {
     list(): Promise<Decision[]>
+    search(query: string): Promise<Decision[]>
     get(id: string): Promise<Decision | null>
     create(input: DecisionCreateInput): Promise<Decision>
     update(id: string, patch: DecisionUpdateInput): Promise<Decision>
