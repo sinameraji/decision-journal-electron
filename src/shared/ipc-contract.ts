@@ -15,14 +15,73 @@ export interface UnlockResult {
   failedAttempts?: number
 }
 
+export const MENTAL_STATES = [
+  'energized',
+  'focused',
+  'relaxed',
+  'confident',
+  'tired',
+  'accepting',
+  'accommodating',
+  'anxious',
+  'resigned',
+  'frustrated',
+  'angry'
+] as const
+
+export type MentalState = (typeof MENTAL_STATES)[number]
+
+export const MENTAL_STATE_LABELS: Record<MentalState, string> = {
+  energized: 'Energized',
+  focused: 'Focused',
+  relaxed: 'Relaxed',
+  confident: 'Confident',
+  tired: 'Tired',
+  accepting: 'Accepting',
+  accommodating: 'Accommodating',
+  anxious: 'Anxious',
+  resigned: 'Resigned',
+  frustrated: 'Frustrated',
+  angry: 'Angry'
+}
+
 export interface Decision {
   id: string
   title: string
-  body: string
-  createdAt: number
+  decidedAt: number
   reviewAt: number | null
+  mentalState: MentalState[]
+  situation: string
+  problemStatement: string
+  variables: string
+  complications: string
+  alternatives: string
+  rangeOfOutcomes: string
+  expectedOutcome: string
+  outcome: string
+  lessonsLearned: string
+  reviewedAt: number | null
+  createdAt: number
+  updatedAt: number
   isSample: 0 | 1
 }
+
+export type DecisionCreateInput = Pick<
+  Decision,
+  | 'title'
+  | 'decidedAt'
+  | 'reviewAt'
+  | 'mentalState'
+  | 'situation'
+  | 'problemStatement'
+  | 'variables'
+  | 'complications'
+  | 'alternatives'
+  | 'rangeOfOutcomes'
+  | 'expectedOutcome'
+>
+
+export type DecisionUpdateInput = Partial<DecisionCreateInput>
 
 export interface Api {
   vault: {
@@ -34,9 +93,15 @@ export interface Api {
     setTouchIdEnabled(enabled: boolean, pin: string): Promise<{ ok: boolean; error?: string }>
     enableTouchIdCurrentSession(): Promise<{ ok: boolean; error?: string }>
     unlockWithTouchId(): Promise<UnlockResult>
+    verifyPin(pin: string): Promise<UnlockResult>
+    promptTouchIdForAction(reason: string): Promise<{ ok: boolean }>
   }
   decisions: {
     list(): Promise<Decision[]>
+    get(id: string): Promise<Decision | null>
+    create(input: DecisionCreateInput): Promise<Decision>
+    update(id: string, patch: DecisionUpdateInput): Promise<Decision>
+    delete(id: string): Promise<void>
   }
   theme: {
     get(): Promise<ThemeMode>
