@@ -1,6 +1,5 @@
 import { NavLink } from 'react-router-dom'
 import {
-  ChevronLeft,
   FileText,
   PlusCircle,
   Clock,
@@ -21,18 +20,15 @@ const NAV = [
 
 export default function Sidebar() {
   return (
-    <aside className="drag-region flex h-full w-[184px] shrink-0 flex-col border-r border-border bg-sidebar">
-      <div className="flex h-[52px] items-center justify-between pl-[72px] pr-3">
+    <aside className="drag-region flex h-full w-[200px] shrink-0 flex-col border-r border-border bg-sidebar">
+      {/* Traffic-light strip (drag region, intentionally empty) */}
+      <div className="h-[38px]" />
+
+      {/* Brand row */}
+      <div className="flex h-[40px] items-center px-5">
         <span className="font-serif text-[15px] font-semibold tracking-tight text-text">
           Decision Journal
         </span>
-        <button
-          type="button"
-          className="no-drag flex h-6 w-6 items-center justify-center rounded text-text-muted hover:bg-nav-active hover:text-text"
-          aria-label="Collapse sidebar"
-        >
-          <ChevronLeft size={16} strokeWidth={2} />
-        </button>
       </div>
 
       <nav className="no-drag mt-3 flex flex-col gap-[2px] px-3">
@@ -55,7 +51,7 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      <div className="no-drag mt-auto flex flex-col gap-1 px-4 pb-4 text-[12px] text-text-muted">
+      <div className="no-drag mt-auto flex flex-col gap-1 px-5 pb-4 text-[12px] text-text-muted">
         <div className="flex items-center gap-2">
           <Command size={12} strokeWidth={2} />
           <span>Quick navigation</span>
