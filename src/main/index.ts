@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, session } from 'electron'
+import { app, BrowserWindow, shell, session, nativeImage } from 'electron'
 import { join } from 'node:path'
 import { clearSessionOnQuit, registerIpcHandlers } from './ipc'
 import { applyThemeMode, loadThemePreference, wireNativeThemeBroadcast } from './theme'
@@ -118,6 +118,9 @@ function createWindow(): void {
 app.setName('Decision Journal')
 
 app.whenReady().then(async () => {
+  const iconPath = join(__dirname, '../../build/icon.icns')
+  app.dock?.setIcon(nativeImage.createFromPath(iconPath))
+
   installNetworkKillSwitch()
   installCsp()
   registerIpcHandlers()
