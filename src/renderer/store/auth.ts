@@ -16,7 +16,6 @@ export const useAuthStore = create<AuthState>((set) => ({
   loading: true,
 
   refreshStatus: async () => {
-    set({ loading: true })
     const status = await window.api.vault.status()
     set({ status, loading: false })
   },

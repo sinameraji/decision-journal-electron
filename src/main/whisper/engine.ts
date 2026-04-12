@@ -31,7 +31,10 @@ export async function transcribe(samples: Float32Array): Promise<string> {
   const whisper = await ensureLoaded()
   const task = await whisper.transcribe(samples, {
     language: 'en',
-    suppress_non_speech_tokens: true
+    suppress_non_speech_tokens: true,
+    no_context: true,
+    suppress_blank: true,
+    temperature: 0.0
   })
   const results = await task.result
   return results.map((r) => r.text).join(' ').trim()

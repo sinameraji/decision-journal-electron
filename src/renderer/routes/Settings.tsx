@@ -1,23 +1,76 @@
 import { useEffect, useState } from 'react'
-import { Fingerprint, Lock } from 'lucide-react'
+import { Fingerprint, Lock, Mic, Download, Trash2, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react'
 import PinPad from '../components/PinPad'
 import { useAuthStore } from '../store/auth'
+import { useTranscriptionStore } from '../store/transcription'
+import type { WhisperModelInfo } from '@shared/ipc-contract'
 
 export default function Settings() {
   const status = useAuthStore((s) => s.status)!
   const refreshStatus = useAuthStore((s) => s.refreshStatus)
   const lock = useAuthStore((s) => s.lock)
 
+  const {
+    availableModels,
+    installedModels,
+    activeModel,
+    totalMemGB,
+    downloadProgress,
+    setDownloadProgress,
+    refresh: refreshTranscription
+  } = useTranscriptionStore()
+
   const [version, setVersion] = useState<string>('')
   const [pinModal, setPinModal] = useState<'enable-touchid' | null>(null)
   const [pin, setPin] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [modelBusy, setModelBusy] = useState<string | null>(null)
 
   useEffect(() => {
     window.api.app.version().then(setVersion)
     refreshStatus()
-  }, [refreshStatus])
+    refreshTranscription()
+  }, [refreshStatus, refreshTranscription])
+
+  useEffect(() => {
+    const unsub = window.api.transcription.onDownloadProgress((p) => {
+      setDownloadProgress(p)
+    })
+    return unsub
+  }, [setDownloadProgress])
+
+  async function handleDownloadModel(name: string) {
+    setModelBusy(name)
+    try {
+      await window.api.transcription.downloadModel(name)
+      await refreshTranscription()
+    } catch {
+      // download cancelled or failed
+    }
+    setDownloadProgress(null)
+    setModelBusy(null)
+  }
+
+  async function handleDeleteModel(name: string) {
+    setModelBusy(name)
+    await window.api.transcription.deleteModel(name)
+    await refreshTranscription()
+    setModelBusy(null)
+  }
+
+  async function handleSetActiveModel(name: string) {
+    setModelBusy(name)
+    await window.api.transcription.setActiveModel(name)
+    await refreshTranscription()
+    setModelBusy(null)
+  }
+
+  async function handleCancelDownload() {
+    await window.api.transcription.cancelDownload()
+    setDownloadProgress(null)
+    setModelBusy(null)
+  }
 
   async function handleToggleTouchId(next: boolean) {
     setError(null)
@@ -99,6 +152,34 @@ export default function Settings() {
               </button>
             }
           />
+        </div>
+      </section>
+
+      <section className="mt-8">
+        <h2 className="mb-3 text-[13px] font-semibold uppercase tracking-wide text-text-muted">
+          Transcription
+        </h2>
+        <p className="mb-3 text-[12px] text-text-muted">
+          Manage local speech-to-text models. Audio never leaves your device.
+        </p>
+        <div className="flex flex-col gap-2.5">
+          {availableModels.map((m) => (
+            <ModelRow
+              key={m.name}
+              model={m}
+              isInstalled={installedModels.includes(m.name)}
+              isActive={activeModel === m.name}
+              isBusy={modelBusy === m.name}
+              downloadProgress={
+                downloadProgress && modelBusy === m.name ? downloadProgress : null
+              }
+              lowRamWarning={m.name === 'small.en' && totalMemGB < 8}
+              onDownload={() => handleDownloadModel(m.name)}
+              onDelete={() => handleDeleteModel(m.name)}
+              onSetActive={() => handleSetActiveModel(m.name)}
+              onCancelDownload={handleCancelDownload}
+            />
+          ))}
         </div>
       </section>
 
@@ -216,5 +297,131 @@ function Toggle({
         ].join(' ')}
       />
     </button>
+  )
+}
+
+function ModelRow({
+  model,
+  isInstalled,
+  isActive,
+  isBusy,
+  downloadProgress,
+  lowRamWarning,
+  onDownload,
+  onDelete,
+  onSetActive,
+  onCancelDownload
+}: {
+  model: WhisperModelInfo
+  isInstalled: boolean
+  isActive: boolean
+  isBusy: boolean
+  downloadProgress: { loaded: number; total: number } | null
+  lowRamWarning: boolean
+  onDownload: () => void
+  onDelete: () => void
+  onSetActive: () => void
+  onCancelDownload: () => void
+}) {
+  const isDownloading = downloadProgress !== null
+  const pct =
+    downloadProgress && downloadProgress.total > 0
+      ? Math.round((downloadProgress.loaded / downloadProgress.total) * 100)
+      : 0
+
+  return (
+    <div className="rounded-xl border border-border bg-bg-elevated px-5 py-4">
+      <div className="flex items-start justify-between">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <Mic size={14} className="text-text-muted" />
+            <span className="text-[13px] font-medium text-text">{model.label}</span>
+            <span className="text-[12px] text-text-muted">{model.sizeLabel}</span>
+            {isActive && (
+              <span className="rounded-full bg-[rgb(var(--accent))]/10 px-2 py-0.5 text-[11px] font-medium text-[rgb(var(--accent))] dark:bg-text/10 dark:text-text">
+                Active
+              </span>
+            )}
+            {isInstalled && !isActive && (
+              <span className="rounded-full bg-border px-2 py-0.5 text-[11px] font-medium text-text-muted">
+                Installed
+              </span>
+            )}
+          </div>
+          <p className="mt-1 text-[12px] text-text-muted">{model.description}</p>
+          {lowRamWarning && (
+            <span className="mt-1 flex items-center gap-1 text-[11.5px] text-amber-500">
+              <AlertTriangle size={12} />
+              Your Mac has less than 8 GB RAM — this model may run slowly.
+            </span>
+          )}
+        </div>
+
+        <div className="ml-4 flex shrink-0 items-center gap-2">
+          {isDownloading ? (
+            <button
+              type="button"
+              onClick={onCancelDownload}
+              className="rounded-md border border-border bg-bg px-3 py-1.5 text-[12px] text-text-muted hover:text-text"
+            >
+              Cancel
+            </button>
+          ) : isInstalled ? (
+            <>
+              {!isActive && (
+                <button
+                  type="button"
+                  onClick={onSetActive}
+                  disabled={isBusy}
+                  className="rounded-md border border-[rgb(var(--accent))] bg-[rgb(var(--accent))] px-3 py-1.5 text-[12px] text-accent-text hover:opacity-90 disabled:opacity-50 dark:bg-transparent dark:border-border dark:text-text"
+                >
+                  {isBusy ? <Loader2 size={13} className="animate-spin" /> : 'Set Active'}
+                </button>
+              )}
+              {!isActive && (
+                <button
+                  type="button"
+                  onClick={onDelete}
+                  disabled={isBusy}
+                  className="flex items-center gap-1 rounded-md border border-border bg-bg px-3 py-1.5 text-[12px] text-red-500/80 hover:text-red-500 disabled:opacity-50"
+                >
+                  <Trash2 size={12} />
+                  Delete
+                </button>
+              )}
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={onDownload}
+              disabled={isBusy}
+              className="flex items-center gap-1.5 rounded-md border border-[rgb(var(--accent))] bg-[rgb(var(--accent))] px-3 py-1.5 text-[12px] text-accent-text hover:opacity-90 disabled:opacity-50 dark:bg-transparent dark:border-border dark:text-text"
+            >
+              {isBusy ? (
+                <Loader2 size={13} className="animate-spin" />
+              ) : (
+                <Download size={13} />
+              )}
+              Download
+            </button>
+          )}
+        </div>
+      </div>
+
+      {isDownloading && (
+        <div className="mt-3">
+          <div className="flex items-center gap-2 text-[12px] text-text-muted">
+            <Loader2 size={13} className="animate-spin" />
+            Downloading... {pct}%
+          </div>
+          <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-border">
+            <div
+              className="h-full rounded-full bg-[rgb(var(--accent))] transition-all duration-200 dark:bg-text"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
