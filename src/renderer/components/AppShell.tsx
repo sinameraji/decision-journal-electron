@@ -1,6 +1,7 @@
 import type { PropsWithChildren } from 'react'
 import Sidebar from './Sidebar'
 import TopBar from './TopBar'
+import CommandPalette from './CommandPalette'
 
 export default function AppShell({ children }: PropsWithChildren) {
   return (
@@ -10,6 +11,7 @@ export default function AppShell({ children }: PropsWithChildren) {
         <TopBar />
         <main className="flex-1 overflow-auto px-12 pt-10">{children}</main>
       </div>
+      <CommandPalette />
     </div>
   )
 }
