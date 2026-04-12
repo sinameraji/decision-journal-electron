@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowUp, ChevronDown, Square, Eraser, AlertCircle } from 'lucide-react'
 import { useChatStore } from '../../store/chat'
+import MicButton from '../../components/voice/MicButton'
 import Message from './Message'
 
 export default function ChatView() {
@@ -50,6 +51,20 @@ export default function ChatView() {
     setInput('')
     await sendMessage(text)
   }
+
+  const handleMicInsert = useCallback(
+    (text: string) => {
+      const el = textareaRef.current
+      if (el && el === document.activeElement) {
+        const start = el.selectionStart ?? input.length
+        const end = el.selectionEnd ?? input.length
+        setInput(input.slice(0, start) + text + input.slice(end))
+      } else {
+        setInput(input ? input + ' ' + text : text)
+      }
+    },
+    [input]
+  )
 
   if (!activeModel) return null
 
@@ -118,6 +133,7 @@ export default function ChatView() {
             className="max-h-[140px] min-h-[24px] flex-1 resize-none bg-transparent text-[13.5px] leading-relaxed text-text placeholder:text-text-muted focus:outline-none"
             disabled={!!streaming}
           />
+          {!streaming && <MicButton onInsert={handleMicInsert} />}
           {streaming ? (
             <button
               type="button"

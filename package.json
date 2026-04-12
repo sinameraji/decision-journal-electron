@@ -21,6 +21,7 @@
     "lucide-react": "^0.460.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-markdown": "^10.1.0",
     "react-router-dom": "^6.28.0",
     "smart-whisper": "^0.8.1",
     "zustand": "^5.0.1"

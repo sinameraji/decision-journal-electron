@@ -188,14 +188,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
       ])
       const { activeModel, stage: prevStage } = get()
       // If the active model got uninstalled out from under us, clear it.
+      // If no model is active but models are installed, auto-select the first one.
       const activeStillValid =
         activeModel && installed.some((m) => m.id === activeModel) ? activeModel : null
+      const effectiveModel = activeStillValid ?? (installed.length > 0 ? installed[0].id : null)
       set({
         status,
         catalog,
         installed,
-        activeModel: activeStillValid,
-        stage: nextStage(prevStage, status, activeStillValid)
+        activeModel: effectiveModel,
+        stage: nextStage(prevStage, status, effectiveModel)
       })
     } catch {
       const fallbackHardware = get().status?.hardware ?? {

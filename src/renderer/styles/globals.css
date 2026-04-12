@@ -77,6 +77,58 @@ textarea {
   background-color: rgb(var(--text-muted) / 0.5);
 }
 
+/* Chat markdown prose */
+.prose-chat {
+  line-height: 1.6;
+}
+.prose-chat p {
+  margin: 0;
+}
+.prose-chat p + p {
+  margin-top: 0.5em;
+}
+.prose-chat strong {
+  font-weight: 600;
+}
+.prose-chat em {
+  font-style: italic;
+}
+.prose-chat ul,
+.prose-chat ol {
+  margin: 0.4em 0;
+  padding-left: 1.4em;
+}
+.prose-chat li {
+  margin: 0.15em 0;
+}
+.prose-chat code {
+  font-size: 0.9em;
+  padding: 0.15em 0.35em;
+  border-radius: 4px;
+  background-color: rgb(var(--text) / 0.07);
+}
+.prose-chat pre {
+  margin: 0.5em 0;
+  padding: 0.6em 0.8em;
+  border-radius: 6px;
+  background-color: rgb(var(--text) / 0.07);
+  overflow-x: auto;
+}
+.prose-chat pre code {
+  padding: 0;
+  background: none;
+}
+.prose-chat h1, .prose-chat h2, .prose-chat h3 {
+  font-weight: 600;
+  margin: 0.6em 0 0.3em;
+}
+.prose-chat blockquote {
+  margin: 0.4em 0;
+  padding-left: 0.8em;
+  border-left: 2px solid rgb(var(--border));
+  color: rgb(var(--text-muted));
+}
+
 /* Focus rings */
 :focus-visible {
   outline: 2px solid rgb(var(--text-muted));
