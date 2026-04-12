@@ -6,10 +6,11 @@ import NewDecision from './routes/NewDecision'
 import EditDecision from './routes/EditDecision'
 import Reviews from './routes/Reviews'
 import Analytics from './routes/Analytics'
-import Chat from './routes/Chat'
+import Chat from './routes/chat'
 import Settings from './routes/Settings'
 import AppShell from './components/AppShell'
 import { useAuthStore } from './store/auth'
+import { useChatStore } from './store/chat'
 import { useThemeStore } from './store/theme'
 
 export default function App() {
@@ -21,6 +22,10 @@ export default function App() {
     initTheme()
     refreshStatus()
   }, [initTheme, refreshStatus])
+
+  useEffect(() => {
+    if (!unlocked) useChatStore.getState().reset()
+  }, [unlocked])
 
   if (loading || !status || !themeReady) {
     return <div className="h-full w-full bg-bg" />

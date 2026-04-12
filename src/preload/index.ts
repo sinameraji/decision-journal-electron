@@ -1,11 +1,17 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
   Api,
+  CatalogModel,
+  ChatMsg,
   Decision,
   DecisionCreateInput,
   DecisionUpdateInput,
   ExportResult,
   ImportResult,
+  InstalledModel,
+  ModelInfo,
+  OllamaEvent,
+  OllamaStatus,
   ThemeMode,
   UnlockResult,
   VaultStatus,
@@ -80,6 +86,27 @@ const api: Api = {
       ipcRenderer.on('whisper:download-progress', listener)
       return () => ipcRenderer.removeListener('whisper:download-progress', listener)
     }
+  },
+  ollama: {
+    status: (): Promise<OllamaStatus> => ipcRenderer.invoke('ollama:status'),
+    listInstalled: (): Promise<InstalledModel[]> => ipcRenderer.invoke('ollama:list-installed'),
+    catalog: (): Promise<CatalogModel[]> => ipcRenderer.invoke('ollama:catalog'),
+    pull: (modelId: string): Promise<string> => ipcRenderer.invoke('ollama:pull', modelId),
+    cancel: (requestId: string): Promise<void> =>
+      ipcRenderer.invoke('ollama:cancel', requestId),
+    remove: (modelId: string): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke('ollama:remove', modelId),
+    show: (modelId: string): Promise<ModelInfo | null> =>
+      ipcRenderer.invoke('ollama:show', modelId),
+    chat: (modelId: string, messages: ChatMsg[]): Promise<string> =>
+      ipcRenderer.invoke('ollama:chat', modelId, messages),
+    onEvent: (cb: (evt: OllamaEvent) => void) => {
+      const listener = (_: unknown, evt: OllamaEvent) => cb(evt)
+      ipcRenderer.on('ollama:event', listener)
+      return () => ipcRenderer.removeListener('ollama:event', listener)
+    },
+    openExternal: (url: string): Promise<void> =>
+      ipcRenderer.invoke('ollama:open-external', url)
   }
 }
 

@@ -1,4 +1,58 @@
+import type { CatalogEntry } from './models'
+
 export type ThemeMode = 'light' | 'dark' | 'system'
+
+export type ModelFit = 'ok' | 'tight' | 'too-big'
+
+export interface HardwareProfile {
+  totalRamGB: number
+  arch: 'arm64' | 'x64' | 'other'
+  cpuModel: string
+}
+
+export interface OllamaStatus {
+  running: boolean
+  version: string | null
+  hardware: HardwareProfile
+}
+
+export interface InstalledModel {
+  id: string
+  sizeBytes: number
+  modifiedAt: number
+  digest: string
+  parameterSize: string | null
+  quantization: string | null
+}
+
+export interface CatalogModel extends CatalogEntry {
+  fit: ModelFit
+  fitReason: string
+  installed: boolean
+}
+
+export interface ModelInfo {
+  id: string
+  parameterSize: string | null
+  quantization: string | null
+  family: string | null
+  license: string | null
+  sizeBytes: number
+}
+
+export type ChatRole = 'user' | 'assistant'
+
+export interface ChatMsg {
+  role: ChatRole
+  content: string
+}
+
+export type OllamaEvent =
+  | { requestId: string; type: 'pull-progress'; status: string; completed?: number; total?: number }
+  | { requestId: string; type: 'chat-token'; token: string }
+  | { requestId: string; type: 'done' }
+  | { requestId: string; type: 'error'; message: string }
+  | { requestId: string; type: 'cancelled' }
 
 export interface VaultStatus {
   initialized: boolean
@@ -153,6 +207,18 @@ export interface Api {
     deleteModel(name: string): Promise<void>
     transcribe(samples: ArrayBuffer): Promise<string>
     onDownloadProgress(cb: (progress: WhisperDownloadProgress) => void): () => void
+  }
+  ollama: {
+    status(): Promise<OllamaStatus>
+    listInstalled(): Promise<InstalledModel[]>
+    catalog(): Promise<CatalogModel[]>
+    pull(modelId: string): Promise<string>
+    cancel(requestId: string): Promise<void>
+    remove(modelId: string): Promise<{ ok: boolean; error?: string }>
+    show(modelId: string): Promise<ModelInfo | null>
+    chat(modelId: string, messages: ChatMsg[]): Promise<string>
+    onEvent(cb: (evt: OllamaEvent) => void): () => void
+    openExternal(url: string): Promise<void>
   }
 }
 

@@ -1,20 +1,28 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
+import { randomUUID } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
 import { totalmem } from 'node:os'
 import { unlinkSync } from 'node:fs'
 import type Database from 'better-sqlite3-multiple-ciphers'
 import type {
+  CatalogModel,
+  ChatMsg,
   DecisionCreateInput,
   DecisionUpdateInput,
   ExportResult,
   ImportResult,
+  InstalledModel,
+  ModelInfo,
+  OllamaEvent,
+  OllamaStatus,
   ThemeMode,
   UnlockResult,
   VaultStatus,
   WhisperModelInfo,
   WhisperStatus
 } from '@shared/ipc-contract'
+import { MODEL_CATALOG as OLLAMA_CATALOG } from '@shared/models'
 import { Vault, isValidPinFormat } from './crypto/vault'
 import { canPromptTouchId, promptTouchId } from './crypto/keychain'
 import { closeDb, openEncryptedDb } from './db/open'
@@ -27,6 +35,18 @@ import {
   searchDecisions,
   updateDecision
 } from './db/decisions'
+import {
+  chatStream,
+  deleteModel as deleteOllamaModel,
+  getVersion,
+  listTags,
+  OllamaNotRunningError,
+  pullModel,
+  showModel,
+  type ChatMessageIn
+} from './ollama/client'
+import { classifyModel, getHardwareProfile } from './ollama/hardware'
+import { buildCoachSystemPrompt } from './ollama/systemPrompt'
 import { applyThemeMode, loadThemePreference, saveThemePreference } from './theme'
 import { MODEL_CATALOG, listInstalled, isInstalled, modelPath } from './whisper/models'
 import { getActiveModel, setActiveModel } from './whisper/config'
@@ -37,8 +57,27 @@ const ALLOWED_EXTERNAL_URL_PREFIXES = [
   'https://github.com/sinameraji/'
 ]
 
+const OLLAMA_EXTERNAL_URL_ALLOWLIST = new Set([
+  'https://ollama.com',
+  'https://ollama.com/',
+  'https://ollama.com/download',
+  'https://ollama.com/library',
+  'https://github.com/ollama/ollama'
+])
+
 function isAllowedExternalUrl(url: string): boolean {
   return ALLOWED_EXTERNAL_URL_PREFIXES.some((prefix) => url.startsWith(prefix))
+}
+
+function isAllowedOllamaUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'https:') return false
+    if (parsed.hostname !== 'ollama.com' && parsed.hostname !== 'github.com') return false
+    return OLLAMA_EXTERNAL_URL_ALLOWLIST.has(url)
+  } catch {
+    return false
+  }
 }
 
 function backupFolderName(): string {
@@ -57,6 +96,22 @@ interface Session {
 }
 
 const session: Session = { db: null, masterKey: null }
+
+const activeRequests = new Map<string, AbortController>()
+
+function sendOllamaEvent(evt: OllamaEvent): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send('ollama:event', evt)
+    }
+  }
+}
+
+function errorMessage(err: unknown): string {
+  if (err instanceof OllamaNotRunningError) return 'Ollama is not running'
+  if (err instanceof Error) return err.message
+  return String(err)
+}
 
 function vaultPath(): string {
   return join(app.getPath('userData'), 'vault.json')
@@ -121,6 +176,8 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('vault:lock', async (): Promise<void> => {
+    for (const controller of activeRequests.values()) controller.abort()
+    activeRequests.clear()
     closeDb(session.db)
     zeroBuffer(session.masterKey)
     session.db = null
@@ -426,9 +483,182 @@ export function registerIpcHandlers(): void {
     const samples = new Float32Array(buffer)
     return transcribe(samples)
   })
+
+  // ---------------- Ollama ----------------
+
+  ipcMain.handle('ollama:status', async (): Promise<OllamaStatus> => {
+    const hardware = getHardwareProfile()
+    try {
+      const version = await getVersion()
+      return { running: true, version, hardware }
+    } catch {
+      return { running: false, version: null, hardware }
+    }
+  })
+
+  ipcMain.handle('ollama:list-installed', async (): Promise<InstalledModel[]> => {
+    try {
+      const tags = await listTags()
+      return tags.map((t) => ({
+        id: t.name,
+        sizeBytes: t.size,
+        modifiedAt: Date.parse(t.modified_at) || 0,
+        digest: t.digest,
+        parameterSize: t.details?.parameter_size ?? null,
+        quantization: t.details?.quantization_level ?? null
+      }))
+    } catch {
+      return []
+    }
+  })
+
+  ipcMain.handle('ollama:catalog', async (): Promise<CatalogModel[]> => {
+    const profile = getHardwareProfile()
+    let installedIds = new Set<string>()
+    try {
+      const tags = await listTags()
+      installedIds = new Set(tags.map((t) => t.name))
+    } catch {
+      // Ollama not running — return catalog with installed=false for all.
+    }
+    return OLLAMA_CATALOG.map((entry) => {
+      const { fit, reason } = classifyModel(entry, profile)
+      return {
+        ...entry,
+        fit,
+        fitReason: reason,
+        installed: installedIds.has(entry.id)
+      }
+    })
+  })
+
+  ipcMain.handle('ollama:pull', async (_evt, modelId: string): Promise<string> => {
+    const requestId = randomUUID()
+    const controller = new AbortController()
+    activeRequests.set(requestId, controller)
+
+    void (async () => {
+      try {
+        for await (const progress of pullModel(modelId, controller.signal)) {
+          if (progress.error) {
+            sendOllamaEvent({ requestId, type: 'error', message: progress.error })
+            return
+          }
+          sendOllamaEvent({
+            requestId,
+            type: 'pull-progress',
+            status: progress.status,
+            completed: progress.completed,
+            total: progress.total
+          })
+        }
+        sendOllamaEvent({ requestId, type: 'done' })
+      } catch (err) {
+        if (controller.signal.aborted) {
+          sendOllamaEvent({ requestId, type: 'cancelled' })
+        } else {
+          sendOllamaEvent({ requestId, type: 'error', message: errorMessage(err) })
+        }
+      } finally {
+        activeRequests.delete(requestId)
+      }
+    })()
+
+    return requestId
+  })
+
+  ipcMain.handle('ollama:cancel', async (_evt, requestId: string): Promise<void> => {
+    const controller = activeRequests.get(requestId)
+    if (controller) controller.abort()
+  })
+
+  ipcMain.handle(
+    'ollama:remove',
+    async (_evt, modelId: string): Promise<{ ok: boolean; error?: string }> => {
+      try {
+        await deleteOllamaModel(modelId)
+        return { ok: true }
+      } catch (err) {
+        return { ok: false, error: errorMessage(err) }
+      }
+    }
+  )
+
+  ipcMain.handle('ollama:show', async (_evt, modelId: string): Promise<ModelInfo | null> => {
+    try {
+      const raw = await showModel(modelId)
+      const tags = await listTags().catch(() => [])
+      const tag = tags.find((t) => t.name === modelId)
+      return {
+        id: modelId,
+        parameterSize: raw.details?.parameter_size ?? null,
+        quantization: raw.details?.quantization_level ?? null,
+        family: raw.details?.family ?? null,
+        license: raw.license ? raw.license.slice(0, 500) : null,
+        sizeBytes: tag?.size ?? 0
+      }
+    } catch {
+      return null
+    }
+  })
+
+  ipcMain.handle(
+    'ollama:chat',
+    async (_evt, modelId: string, messages: ChatMsg[]): Promise<string> => {
+      const requestId = randomUUID()
+      const controller = new AbortController()
+      activeRequests.set(requestId, controller)
+
+      const systemPrompt = buildCoachSystemPrompt(session.db)
+      const fullMessages: ChatMessageIn[] = [
+        { role: 'system', content: systemPrompt },
+        ...messages.map((m) => ({ role: m.role, content: m.content }))
+      ]
+
+      void (async () => {
+        try {
+          for await (const chunk of chatStream(modelId, fullMessages, controller.signal)) {
+            if (chunk.error) {
+              sendOllamaEvent({ requestId, type: 'error', message: chunk.error })
+              return
+            }
+            const token = chunk.message?.content ?? ''
+            if (token) {
+              sendOllamaEvent({ requestId, type: 'chat-token', token })
+            }
+            if (chunk.done) {
+              sendOllamaEvent({ requestId, type: 'done' })
+              return
+            }
+          }
+          sendOllamaEvent({ requestId, type: 'done' })
+        } catch (err) {
+          if (controller.signal.aborted) {
+            sendOllamaEvent({ requestId, type: 'cancelled' })
+          } else {
+            sendOllamaEvent({ requestId, type: 'error', message: errorMessage(err) })
+          }
+        } finally {
+          activeRequests.delete(requestId)
+        }
+      })()
+
+      return requestId
+    }
+  )
+
+  ipcMain.handle('ollama:open-external', async (_evt, url: string): Promise<void> => {
+    if (!isAllowedOllamaUrl(url)) {
+      console.warn('[ollama:open-external] blocked', url)
+      return
+    }
+    await shell.openExternal(url)
+  })
 }
 
 export function clearSessionOnQuit(): void {
+  for (const controller of activeRequests.values()) controller.abort()
+  activeRequests.clear()
   closeDb(session.db)
   zeroBuffer(session.masterKey)
   session.db = null
