@@ -1,6 +1,6 @@
 {
   "name": "decision-journal",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "A local-first, fully offline, end-to-end encrypted decision journal for macOS.",
   "author": {
     "name": "Sina Meraji"

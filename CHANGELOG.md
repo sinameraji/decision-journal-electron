@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.1](https://github.com/sinameraji/decision-journal-electron/compare/v0.3.0...v0.3.1) (2026-04-12)
+
+
+### Bug Fixes
+
+* remove sample data seeding that resurrected deleted decisions ([e62ab95](https://github.com/sinameraji/decision-journal-electron/commit/e62ab9549474c8d922035b75246c07e803fc3359))
+* remove sample data seeding that resurrected deleted decisions ([74ef164](https://github.com/sinameraji/decision-journal-electron/commit/74ef16409c9be653df26d29f83e9a30f00127e2d))
+
 ## [0.3.0](https://github.com/sinameraji/decision-journal-electron/compare/v0.2.0...v0.3.0) (2026-04-12)
 
 
