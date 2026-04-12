@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.3](https://github.com/sinameraji/decision-journal-electron/compare/v0.4.2...v0.4.3) (2026-04-12)
+
+
+### Bug Fixes
+
+* use npx to invoke electron-builder in CI ([ee14b8a](https://github.com/sinameraji/decision-journal-electron/commit/ee14b8a80a79bc31b7e7901bcd6cee171cd01f6a))
+* use npx to invoke electron-builder in CI workflows ([f8e7017](https://github.com/sinameraji/decision-journal-electron/commit/f8e7017b7c4eca410cedd9c6c709691d791de182))
+
 ## [0.4.2](https://github.com/sinameraji/decision-journal-electron/compare/v0.4.1...v0.4.2) (2026-04-12)
 
 
