@@ -81,10 +81,13 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: macos-dmg
+          name: macos-release
           path: |
             release/*.dmg
             release/*.dmg.blockmap
+            release/*.zip
+            release/*.zip.blockmap
+            release/latest-mac.yml
           if-no-files-found: warn
           retention-days: 7
 
@@ -97,7 +100,7 @@ jobs:
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             gh release create "$TAG" --title "$TAG" --generate-notes
           fi
-          gh release upload "$TAG" release/*.dmg release/*.dmg.blockmap --clobber
+          gh release upload "$TAG" release/*.dmg release/*.dmg.blockmap release/*.zip release/*.zip.blockmap release/latest-mac.yml --clobber
 
       - name: Cleanup keychain
         if: always()

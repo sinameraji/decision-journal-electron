@@ -57,6 +57,7 @@ import {
 import { classifyModel, getHardwareProfile } from './ollama/hardware'
 import { buildCoachSystemPrompt } from './ollama/systemPrompt'
 import { applyThemeMode, loadThemePreference, saveThemePreference } from './theme'
+import { checkForUpdates, downloadUpdate, installUpdate } from './updater'
 import { MODEL_CATALOG, listInstalled, isInstalled, modelPath } from './whisper/models'
 import { getActiveModel, setActiveModel } from './whisper/config'
 import { downloadModel, cancelDownload } from './whisper/download'
@@ -765,6 +766,18 @@ export function registerIpcHandlers(): void {
       return requestId
     }
   )
+
+  ipcMain.handle('app:check-for-updates', async (): Promise<void> => {
+    await checkForUpdates()
+  })
+
+  ipcMain.handle('app:download-update', async (): Promise<void> => {
+    await downloadUpdate()
+  })
+
+  ipcMain.handle('app:install-update', async (): Promise<void> => {
+    installUpdate()
+  })
 
   ipcMain.handle('ollama:open-external', async (_evt, url: string): Promise<void> => {
     if (!isAllowedOllamaUrl(url)) {

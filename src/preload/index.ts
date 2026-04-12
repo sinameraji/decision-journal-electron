@@ -18,6 +18,7 @@ import type {
   OllamaStatus,
   ThemeMode,
   UnlockResult,
+  UpdateStatus,
   VaultStatus,
   WhisperDownloadProgress,
   WhisperModelInfo,
@@ -86,7 +87,15 @@ const api: Api = {
     version: (): Promise<string> => ipcRenderer.invoke('app:version'),
     platform: (): Promise<string> => ipcRenderer.invoke('app:platform'),
     quit: (): Promise<void> => ipcRenderer.invoke('app:quit'),
-    openExternal: (url: string) => ipcRenderer.invoke('app:open-external', url)
+    openExternal: (url: string) => ipcRenderer.invoke('app:open-external', url),
+    checkForUpdates: (): Promise<void> => ipcRenderer.invoke('app:check-for-updates'),
+    downloadUpdate: (): Promise<void> => ipcRenderer.invoke('app:download-update'),
+    installUpdate: (): Promise<void> => ipcRenderer.invoke('app:install-update'),
+    onUpdateStatus: (cb: (status: UpdateStatus) => void) => {
+      const listener = (_: unknown, status: UpdateStatus) => cb(status)
+      ipcRenderer.on('app:update-status', listener)
+      return () => ipcRenderer.removeListener('app:update-status', listener)
+    }
   },
   transcription: {
     getStatus: (): Promise<WhisperStatus> => ipcRenderer.invoke('transcription:status'),

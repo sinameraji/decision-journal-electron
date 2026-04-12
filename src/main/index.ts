@@ -1,6 +1,7 @@
 import { app, BrowserWindow, shell, session, nativeImage } from 'electron'
 import { join } from 'node:path'
 import { clearSessionOnQuit, registerIpcHandlers } from './ipc'
+import { checkForUpdates } from './updater'
 import { applyThemeMode, loadThemePreference, wireNativeThemeBroadcast } from './theme'
 import { isUrlAllowedByGate } from './whisper/download-gate'
 
@@ -130,6 +131,10 @@ app.whenReady().then(async () => {
 
   createWindow()
   wireNativeThemeBroadcast(() => mainWindow)
+
+  if (app.isPackaged) {
+    checkForUpdates().catch(() => {})
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

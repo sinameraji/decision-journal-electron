@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Fingerprint, Lock, Mic, Download, Trash2, Loader2, CheckCircle2, AlertTriangle, HardDriveDownload, Heart } from 'lucide-react'
+import { Fingerprint, Lock, Mic, Download, Trash2, Loader2, CheckCircle2, AlertTriangle, HardDriveDownload, Heart, RefreshCw } from 'lucide-react'
 import PinPad from '../components/PinPad'
 import SupportModal from '../components/SupportModal'
 import { useAuthStore } from '../store/auth'
 import { useTranscriptionStore } from '../store/transcription'
-import type { WhisperModelInfo } from '@shared/ipc-contract'
+import type { WhisperModelInfo, UpdateStatus } from '@shared/ipc-contract'
 
 export default function Settings() {
   const status = useAuthStore((s) => s.status)!
@@ -30,12 +30,18 @@ export default function Settings() {
   const [modelBusy, setModelBusy] = useState<string | null>(null)
   const [justDeleted, setJustDeleted] = useState<string | null>(null)
   const [showSupport, setShowSupport] = useState(false)
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ state: 'idle' })
 
   useEffect(() => {
     window.api.app.version().then(setVersion)
     refreshStatus()
     refreshTranscription()
   }, [refreshStatus, refreshTranscription])
+
+  useEffect(() => {
+    const unsub = window.api.app.onUpdateStatus(setUpdateStatus)
+    return unsub
+  }, [])
 
   useEffect(() => {
     const unsub = window.api.transcription.onDownloadProgress((p) => {
@@ -250,6 +256,9 @@ export default function Settings() {
             <span>v{version || '…'}</span>
           </div>
           <div className="mt-1 text-text-muted">Created by Sina Meraji</div>
+          <div className="mt-3 border-t border-border pt-3">
+            <UpdateRow status={updateStatus} />
+          </div>
         </div>
       </section>
 
@@ -452,6 +461,85 @@ function Toggle({
         ].join(' ')}
       />
     </label>
+  )
+}
+
+function UpdateRow({ status }: { status: UpdateStatus }) {
+  const checking = status.state === 'checking'
+  const downloading = status.state === 'downloading'
+
+  if (status.state === 'downloaded') {
+    return (
+      <div className="flex items-center justify-between">
+        <span className="text-[12.5px] text-green-600 dark:text-green-400">
+          v{status.version} ready to install
+        </span>
+        <button
+          type="button"
+          onClick={() => window.api.app.installUpdate()}
+          className="rounded-md border border-[rgb(var(--accent))] bg-[rgb(var(--accent))] px-3 py-1.5 text-[12px] text-accent-text hover:opacity-90 dark:bg-transparent dark:border-border dark:text-text"
+        >
+          Restart & Update
+        </button>
+      </div>
+    )
+  }
+
+  if (status.state === 'available') {
+    return (
+      <div className="flex items-center justify-between">
+        <span className="text-[12.5px] text-text-muted">
+          v{status.version} available
+        </span>
+        <button
+          type="button"
+          onClick={() => window.api.app.downloadUpdate()}
+          className="rounded-md border border-[rgb(var(--accent))] bg-[rgb(var(--accent))] px-3 py-1.5 text-[12px] text-accent-text hover:opacity-90 dark:bg-transparent dark:border-border dark:text-text"
+        >
+          Download Update
+        </button>
+      </div>
+    )
+  }
+
+  if (downloading) {
+    return (
+      <div className="space-y-1.5">
+        <div className="flex items-center gap-2 text-[12px] text-text-muted">
+          <Loader2 size={13} className="animate-spin" />
+          Downloading update... {status.percent}%
+        </div>
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-border">
+          <div
+            className="h-full rounded-full bg-[rgb(var(--accent))] transition-all duration-200 dark:bg-text"
+            style={{ width: `${status.percent}%` }}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-[12.5px] text-text-muted">
+        {status.state === 'error'
+          ? 'Could not check for updates'
+          : status.state === 'not-available'
+            ? "You're on the latest version"
+            : checking
+              ? 'Checking for updates…'
+              : 'Check for updates'}
+      </span>
+      <button
+        type="button"
+        onClick={() => window.api.app.checkForUpdates()}
+        disabled={checking}
+        className="flex items-center gap-1.5 rounded-md border border-border bg-bg px-3 py-1.5 text-[12px] text-text hover:bg-nav-active disabled:opacity-50"
+      >
+        <RefreshCw size={12} className={checking ? 'animate-spin' : ''} />
+        {checking ? 'Checking…' : 'Check'}
+      </button>
+    </div>
   )
 }
 

@@ -184,6 +184,15 @@ export interface ConversationSummary {
   updatedAt: number
 }
 
+export type UpdateStatus =
+  | { state: 'idle' }
+  | { state: 'checking' }
+  | { state: 'available'; version: string; releaseNotes: string }
+  | { state: 'not-available' }
+  | { state: 'downloading'; percent: number }
+  | { state: 'downloaded'; version: string }
+  | { state: 'error'; message: string }
+
 export interface Api {
   vault: {
     status(): Promise<VaultStatus>
@@ -227,6 +236,10 @@ export interface Api {
     platform(): Promise<string>
     quit(): Promise<void>
     openExternal(url: string): Promise<{ ok: boolean; error?: string }>
+    checkForUpdates(): Promise<void>
+    downloadUpdate(): Promise<void>
+    installUpdate(): Promise<void>
+    onUpdateStatus(cb: (status: UpdateStatus) => void): () => void
   }
   transcription: {
     getStatus(): Promise<WhisperStatus>
