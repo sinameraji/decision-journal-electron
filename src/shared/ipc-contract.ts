@@ -45,6 +45,12 @@ export const MENTAL_STATE_LABELS: Record<MentalState, string> = {
   angry: 'Angry'
 }
 
+export type ExportResult = { ok: true; path: string } | { ok: false; error: string }
+
+export type ImportResult =
+  | { ok: true }
+  | { ok: false; error: 'wrong-pin' | 'invalid-folder' | 'db-exists' | 'internal' }
+
 export interface Decision {
   id: string
   title: string
@@ -95,6 +101,9 @@ export interface Api {
     unlockWithTouchId(): Promise<UnlockResult>
     verifyPin(pin: string): Promise<UnlockResult>
     promptTouchIdForAction(reason: string): Promise<{ ok: boolean }>
+    export(): Promise<ExportResult>
+    pickImportFolder(): Promise<string | null>
+    import(folder: string, pin: string): Promise<ImportResult>
   }
   decisions: {
     list(): Promise<Decision[]>
@@ -111,6 +120,8 @@ export interface Api {
   app: {
     version(): Promise<string>
     platform(): Promise<string>
+    quit(): Promise<void>
+    openExternal(url: string): Promise<{ ok: boolean; error?: string }>
   }
 }
 

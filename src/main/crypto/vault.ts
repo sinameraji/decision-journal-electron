@@ -233,6 +233,42 @@ export class Vault {
     if (!file.touchIdWrappedMasterKey) throw new Error('Touch ID not enabled')
     return keychainUnwrap(file.touchIdWrappedMasterKey)
   }
+
+  async exportPortable(): Promise<string> {
+    const file = await this.read()
+    const portable: VaultFile = {
+      version: file.version,
+      kdf: file.kdf,
+      pinWrappedMasterKey: file.pinWrappedMasterKey,
+      safeStorageDoubleWrapped: null,
+      touchIdWrappedMasterKey: null,
+      failedAttempts: 0,
+      cooldownUntil: null
+    }
+    return JSON.stringify(portable, null, 2)
+  }
+
+  async writePortable(portableJson: string): Promise<void> {
+    const parsed = JSON.parse(portableJson) as VaultFile
+    const file: VaultFile = {
+      version: parsed.version,
+      kdf: parsed.kdf,
+      pinWrappedMasterKey: parsed.pinWrappedMasterKey,
+      safeStorageDoubleWrapped: null,
+      touchIdWrappedMasterKey: null,
+      failedAttempts: 0,
+      cooldownUntil: null
+    }
+    await this.write(file)
+  }
+
+  async sealLocally(): Promise<void> {
+    if (!isEncryptionAvailable()) return
+    const file = await this.read()
+    const innerBlob = Buffer.from(JSON.stringify(file.pinWrappedMasterKey), 'utf8')
+    file.safeStorageDoubleWrapped = keychainWrap(innerBlob)
+    await this.write(file)
+  }
 }
 
 export function constantTimeEqual(a: Buffer, b: Buffer): boolean {

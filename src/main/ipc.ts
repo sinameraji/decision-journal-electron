@@ -1,9 +1,12 @@
-import { app, ipcMain, nativeTheme } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
+import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
 import type Database from 'better-sqlite3-multiple-ciphers'
 import type {
   DecisionCreateInput,
   DecisionUpdateInput,
+  ExportResult,
+  ImportResult,
   ThemeMode,
   UnlockResult,
   VaultStatus
@@ -20,6 +23,22 @@ import {
   updateDecision
 } from './db/decisions'
 import { applyThemeMode, loadThemePreference, saveThemePreference } from './theme'
+
+const ALLOWED_EXTERNAL_URL_PREFIXES = [
+  'https://github.com/sinameraji/'
+]
+
+function isAllowedExternalUrl(url: string): boolean {
+  return ALLOWED_EXTERNAL_URL_PREFIXES.some((prefix) => url.startsWith(prefix))
+}
+
+function backupFolderName(): string {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `decision-journal-backup-${y}-${m}-${day}`
+}
 
 type DB = Database.Database
 
@@ -238,6 +257,118 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('app:version', async () => app.getVersion())
   ipcMain.handle('app:platform', async () => process.platform)
+
+  ipcMain.handle('app:quit', async (): Promise<void> => {
+    app.quit()
+  })
+
+  ipcMain.handle(
+    'app:open-external',
+    async (_evt, url: string): Promise<{ ok: boolean; error?: string }> => {
+      if (typeof url !== 'string' || !isAllowedExternalUrl(url)) {
+        return { ok: false, error: 'url-not-allowed' }
+      }
+      try {
+        await shell.openExternal(url)
+        return { ok: true }
+      } catch (err) {
+        console.error('[app:open-external]', err)
+        return { ok: false, error: 'internal' }
+      }
+    }
+  )
+
+  ipcMain.handle('vault:export', async (evt): Promise<ExportResult> => {
+    if (!session.masterKey) return { ok: false, error: 'not-unlocked' }
+    const win = BrowserWindow.fromWebContents(evt.sender)
+    const picked = win
+      ? await dialog.showOpenDialog(win, {
+          title: 'Choose backup destination',
+          properties: ['openDirectory', 'createDirectory']
+        })
+      : await dialog.showOpenDialog({
+          title: 'Choose backup destination',
+          properties: ['openDirectory', 'createDirectory']
+        })
+    if (picked.canceled || picked.filePaths.length === 0) {
+      return { ok: false, error: 'canceled' }
+    }
+    const destRoot = picked.filePaths[0]
+    const destDir = join(destRoot, backupFolderName())
+    try {
+      await fs.mkdir(destDir, { recursive: true })
+      const vault = getVault()
+      const portableJson = await vault.exportPortable()
+      await fs.writeFile(join(destDir, 'vault.json'), portableJson, {
+        encoding: 'utf8',
+        mode: 0o600
+      })
+      await fs.copyFile(dbPath(), join(destDir, 'decisions.db'))
+      return { ok: true, path: destDir }
+    } catch (err) {
+      console.error('[vault:export]', err)
+      return { ok: false, error: 'internal' }
+    }
+  })
+
+  ipcMain.handle('vault:pick-import-folder', async (evt): Promise<string | null> => {
+    const win = BrowserWindow.fromWebContents(evt.sender)
+    const picked = win
+      ? await dialog.showOpenDialog(win, {
+          title: 'Choose backup folder',
+          properties: ['openDirectory']
+        })
+      : await dialog.showOpenDialog({
+          title: 'Choose backup folder',
+          properties: ['openDirectory']
+        })
+    if (picked.canceled || picked.filePaths.length === 0) return null
+    return picked.filePaths[0]
+  })
+
+  ipcMain.handle(
+    'vault:import',
+    async (_evt, folder: string, pin: string): Promise<ImportResult> => {
+      if (typeof folder !== 'string' || !folder) return { ok: false, error: 'invalid-folder' }
+      if (!isValidPinFormat(pin)) return { ok: false, error: 'wrong-pin' }
+      const srcVault = join(folder, 'vault.json')
+      const srcDb = join(folder, 'decisions.db')
+      try {
+        await fs.access(srcVault)
+        await fs.access(srcDb)
+      } catch {
+        return { ok: false, error: 'invalid-folder' }
+      }
+      try {
+        await fs.access(dbPath())
+        return { ok: false, error: 'db-exists' }
+      } catch {
+        // expected: no existing db
+      }
+      try {
+        const portableJson = await fs.readFile(srcVault, 'utf8')
+        const vault = getVault()
+        await vault.writePortable(portableJson)
+        const unlockResult = await vault.unlock(pin)
+        if (!unlockResult.ok) {
+          await fs.rm(vaultPath(), { force: true })
+          return { ok: false, error: 'wrong-pin' }
+        }
+        await fs.copyFile(srcDb, dbPath())
+        await vault.sealLocally()
+        await hydrateDb(unlockResult.masterKey)
+        return { ok: true }
+      } catch (err) {
+        console.error('[vault:import]', err)
+        try {
+          await fs.rm(vaultPath(), { force: true })
+        } catch {
+          // best-effort cleanup
+        }
+        return { ok: false, error: 'internal' }
+      }
+    }
+  )
 }
 
 export function clearSessionOnQuit(): void {

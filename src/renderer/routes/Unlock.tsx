@@ -4,7 +4,7 @@ import PinPad from '../components/PinPad'
 import ThemeToggle from '../components/ThemeToggle'
 import { useAuthStore } from '../store/auth'
 
-type Mode = 'enter' | 'create-first' | 'create-confirm' | 'offer-touchid'
+type Mode = 'enter' | 'create-first' | 'create-confirm' | 'offer-touchid' | 'restore-pin'
 
 export default function Unlock() {
   const status = useAuthStore((s) => s.status)!
@@ -18,6 +18,7 @@ export default function Unlock() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [cooldownRemaining, setCooldownRemaining] = useState(0)
+  const [restoreFolder, setRestoreFolder] = useState<string | null>(null)
   const touchIdAutoPromptedRef = useRef(false)
 
   useEffect(() => {
@@ -117,6 +118,53 @@ export default function Unlock() {
     markUnlocked()
   }
 
+  async function handleStartRestore() {
+    if (busy) return
+    setError(null)
+    const folder = await window.api.vault.pickImportFolder()
+    if (!folder) return
+    setRestoreFolder(folder)
+    setPin('')
+    setMode('restore-pin')
+  }
+
+  async function handleRestoreSubmit() {
+    if (busy || !restoreFolder) return
+    if (pin.length !== 6) return
+    setBusy(true)
+    setError(null)
+    const res = await window.api.vault.import(restoreFolder, pin)
+    setBusy(false)
+    if (res.ok) {
+      await refreshStatus()
+      markUnlocked()
+      return
+    }
+    setPin('')
+    if (res.error === 'wrong-pin') {
+      setError('Incorrect PIN for this backup')
+    } else if (res.error === 'invalid-folder') {
+      setError('That folder is not a Decision Journal backup')
+      setRestoreFolder(null)
+      setMode('create-first')
+    } else if (res.error === 'db-exists') {
+      setError('A vault already exists on this Mac')
+      setRestoreFolder(null)
+      setMode('create-first')
+    } else {
+      setError('Restore failed')
+      setRestoreFolder(null)
+      setMode('create-first')
+    }
+  }
+
+  function handleCancelRestore() {
+    setRestoreFolder(null)
+    setPin('')
+    setError(null)
+    setMode('create-first')
+  }
+
   async function handleTouchId() {
     if (busy) return
     setBusy(true)
@@ -137,7 +185,9 @@ export default function Unlock() {
         ? 'Create your PIN'
         : mode === 'create-confirm'
           ? 'Confirm your PIN'
-          : 'Enable Touch ID'
+          : mode === 'restore-pin'
+            ? 'Restore from backup'
+            : 'Enable Touch ID'
 
   const subtitle =
     mode === 'enter'
@@ -146,7 +196,9 @@ export default function Unlock() {
         ? 'Choose a 6-digit PIN. This is the only way to decrypt your data — do not forget it.'
         : mode === 'create-confirm'
           ? 'Enter the same 6 digits again to confirm'
-          : 'Unlock your journal with your fingerprint. Your PIN will still work as a fallback.'
+          : mode === 'restore-pin'
+            ? 'Enter the PIN that was used when this backup was created.'
+            : 'Unlock your journal with your fingerprint. Your PIN will still work as a fallback.'
 
   const onSubmit =
     mode === 'enter'
@@ -155,7 +207,9 @@ export default function Unlock() {
         ? handleCreateFirst
         : mode === 'create-confirm'
           ? handleCreateConfirm
-          : undefined
+          : mode === 'restore-pin'
+            ? handleRestoreSubmit
+            : undefined
 
   const cooldownSec = Math.ceil(cooldownRemaining / 1000)
 
@@ -237,6 +291,28 @@ export default function Unlock() {
           >
             <Fingerprint size={15} strokeWidth={1.75} />
             Unlock with Touch ID
+          </button>
+        )}
+
+        {mode === 'create-first' && (
+          <button
+            type="button"
+            onClick={handleStartRestore}
+            disabled={busy}
+            className="mt-2 text-[12.5px] text-text-muted underline decoration-dotted underline-offset-4 hover:text-text disabled:opacity-50"
+          >
+            Restore from backup instead
+          </button>
+        )}
+
+        {mode === 'restore-pin' && (
+          <button
+            type="button"
+            onClick={handleCancelRestore}
+            disabled={busy}
+            className="mt-2 text-[12.5px] text-text-muted underline decoration-dotted underline-offset-4 hover:text-text disabled:opacity-50"
+          >
+            Cancel restore
           </button>
         )}
 
