@@ -28,7 +28,6 @@ import { MODEL_CATALOG as OLLAMA_CATALOG } from '@shared/models'
 import { Vault, isValidPinFormat } from './crypto/vault'
 import { canPromptTouchId, promptTouchId } from './crypto/keychain'
 import { closeDb, openEncryptedDb } from './db/open'
-import { seedIfEmpty } from './db/seed'
 import {
   createDecision,
   deleteDecision,
@@ -141,7 +140,6 @@ function zeroBuffer(buf: Buffer | null): void {
 
 async function hydrateDb(masterKey: Buffer): Promise<void> {
   session.db = await openEncryptedDb(dbPath(), masterKey)
-  seedIfEmpty(session.db)
   session.masterKey = masterKey
 }
 
@@ -334,7 +332,7 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('decisions:delete', async (_evt, id: string) => {
     if (!session.db) throw new Error('Database is locked')
-    deleteDecision(session.db, id)
+    return deleteDecision(session.db, id)
   })
 
   // ---------------- Conversations ----------------
