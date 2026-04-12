@@ -51,15 +51,17 @@ export default function Sidebar() {
             </kbd>
           </span>
         </div>
-        <div className="opacity-70">All data stored locally</div>
-        <button
-          type="button"
-          onClick={() => setShowSupport(true)}
-          className="mt-1 flex items-center gap-1.5 opacity-50 transition-opacity hover:opacity-80"
-        >
-          <Heart size={11} strokeWidth={2} />
-          <span>Support this project</span>
-        </button>
+        <div className="flex items-center justify-between">
+          <span className="opacity-70">All data stored locally</span>
+          <button
+            type="button"
+            onClick={() => setShowSupport(true)}
+            title="Support this project"
+            className="opacity-40 transition-opacity hover:opacity-80"
+          >
+            <Heart size={12} strokeWidth={2} />
+          </button>
+        </div>
       </div>
 
       {showSupport && <SupportModal onClose={() => setShowSupport(false)} />}
