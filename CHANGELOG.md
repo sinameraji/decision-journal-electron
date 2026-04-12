@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.4](https://github.com/sinameraji/decision-journal-electron/compare/v0.4.3...v0.4.4) (2026-04-12)
+
+
+### Bug Fixes
+
+* add biometrics entitlement for Touch ID ([7b9e950](https://github.com/sinameraji/decision-journal-electron/commit/7b9e9505b1859c899494d458d4a4d34fcba89da7))
+* add biometrics entitlement for Touch ID under hardened runtime ([8171577](https://github.com/sinameraji/decision-journal-electron/commit/8171577ef4db664bc3ce4262089168de62bc4c79))
+
 ## [0.4.3](https://github.com/sinameraji/decision-journal-electron/compare/v0.4.2...v0.4.3) (2026-04-12)
 
 
