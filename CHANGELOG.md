@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.2](https://github.com/sinameraji/decision-journal-electron/compare/v0.4.1...v0.4.2) (2026-04-12)
+
+
+### Bug Fixes
+
+* add --publish never to release-please workflow ([9f8dc68](https://github.com/sinameraji/decision-journal-electron/commit/9f8dc681cd1ab0e5ce40f3f108868b56a26d3624))
+* add --publish never to release-please workflow ([0c654ee](https://github.com/sinameraji/decision-journal-electron/commit/0c654eec6c2059d73a977da3fa9cfbc488f73a73))
+
 ## [0.4.1](https://github.com/sinameraji/decision-journal-electron/compare/v0.4.0...v0.4.1) (2026-04-12)
 
 
