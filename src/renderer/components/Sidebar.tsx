@@ -1,22 +1,6 @@
 import { NavLink } from 'react-router-dom'
-import {
-  FileText,
-  PlusCircle,
-  Clock,
-  BarChart3,
-  MessageSquare,
-  Settings as SettingsIcon,
-  Command
-} from 'lucide-react'
-
-const NAV = [
-  { to: '/decisions', label: 'Decisions', Icon: FileText },
-  { to: '/new', label: 'New Decision', Icon: PlusCircle },
-  { to: '/reviews', label: 'Reviews', Icon: Clock },
-  { to: '/analytics', label: 'Analytics', Icon: BarChart3 },
-  { to: '/chat', label: 'Chat', Icon: MessageSquare },
-  { to: '/settings', label: 'Settings', Icon: SettingsIcon }
-] as const
+import { Command } from 'lucide-react'
+import { NAV } from '../nav'
 
 export default function Sidebar() {
   return (

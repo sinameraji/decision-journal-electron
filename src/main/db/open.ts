@@ -49,6 +49,61 @@ const MIGRATIONS: Migration[] = [
       UPDATE decisions SET decided_at = created_at WHERE decided_at IS NULL;
       UPDATE decisions SET updated_at = created_at WHERE updated_at IS NULL;
     `
+  },
+  {
+    version: 3,
+    sql: `
+      CREATE VIRTUAL TABLE IF NOT EXISTS decisions_fts USING fts5(
+        title,
+        situation,
+        problem_statement,
+        variables,
+        complications,
+        alternatives,
+        range_of_outcomes,
+        expected_outcome,
+        outcome,
+        lessons_learned,
+        content='decisions',
+        content_rowid='rowid',
+        tokenize='unicode61 remove_diacritics 2'
+      );
+
+      CREATE TRIGGER IF NOT EXISTS decisions_ai AFTER INSERT ON decisions BEGIN
+        INSERT INTO decisions_fts(rowid, title, situation, problem_statement, variables,
+          complications, alternatives, range_of_outcomes, expected_outcome, outcome, lessons_learned)
+        VALUES (new.rowid, new.title, new.situation, new.problem_statement, new.variables,
+          new.complications, new.alternatives, new.range_of_outcomes, new.expected_outcome,
+          new.outcome, new.lessons_learned);
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS decisions_ad AFTER DELETE ON decisions BEGIN
+        INSERT INTO decisions_fts(decisions_fts, rowid, title, situation, problem_statement,
+          variables, complications, alternatives, range_of_outcomes, expected_outcome, outcome, lessons_learned)
+        VALUES('delete', old.rowid, old.title, old.situation, old.problem_statement, old.variables,
+          old.complications, old.alternatives, old.range_of_outcomes, old.expected_outcome,
+          old.outcome, old.lessons_learned);
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS decisions_au AFTER UPDATE ON decisions BEGIN
+        INSERT INTO decisions_fts(decisions_fts, rowid, title, situation, problem_statement,
+          variables, complications, alternatives, range_of_outcomes, expected_outcome, outcome, lessons_learned)
+        VALUES('delete', old.rowid, old.title, old.situation, old.problem_statement, old.variables,
+          old.complications, old.alternatives, old.range_of_outcomes, old.expected_outcome,
+          old.outcome, old.lessons_learned);
+        INSERT INTO decisions_fts(rowid, title, situation, problem_statement, variables,
+          complications, alternatives, range_of_outcomes, expected_outcome, outcome, lessons_learned)
+        VALUES (new.rowid, new.title, new.situation, new.problem_statement, new.variables,
+          new.complications, new.alternatives, new.range_of_outcomes, new.expected_outcome,
+          new.outcome, new.lessons_learned);
+      END;
+
+      INSERT INTO decisions_fts(rowid, title, situation, problem_statement, variables,
+        complications, alternatives, range_of_outcomes, expected_outcome, outcome, lessons_learned)
+      SELECT rowid, title, situation, problem_statement, variables,
+        complications, alternatives, range_of_outcomes, expected_outcome, outcome, lessons_learned
+      FROM decisions;
+    `
   }
 ]
 

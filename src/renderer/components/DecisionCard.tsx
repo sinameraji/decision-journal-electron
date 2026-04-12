@@ -56,7 +56,7 @@ export default function DecisionCard({
           strokeWidth={1.75}
           className="mt-0.5 shrink-0 text-text-muted"
         />
-        <div className="min-w-0 flex-1 pr-24">
+        <div className="min-w-0 flex-1">
           <p className="text-[14.5px] leading-relaxed text-text">{decision.title}</p>
           {decision.isSample === 1 && (
             <span className="mt-1.5 inline-block rounded-full border border-border bg-bg px-2 py-0.5 text-[10.5px] uppercase tracking-wide text-text-muted">
@@ -64,8 +64,8 @@ export default function DecisionCard({
             </span>
           )}
         </div>
-        <div className="absolute right-5 top-4 flex shrink-0 items-center gap-2">
-          <div className="flex items-center gap-1.5 pt-0.5 text-[12px] text-text-muted">
+        <div className="flex shrink-0 items-center gap-2">
+          <div className="flex items-center gap-1.5 whitespace-nowrap pt-0.5 text-[12px] text-text-muted">
             <Calendar size={13} strokeWidth={1.75} />
             <span>{formatDate(decision.decidedAt)}</span>
           </div>
