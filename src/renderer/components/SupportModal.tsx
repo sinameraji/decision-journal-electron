@@ -22,10 +22,14 @@ export default function SupportModal({ onClose }: Props) {
 
   useEffect(() => {
     if (!canvasRef.current) return
+    const isDark = document.documentElement.classList.contains('dark')
     QRCode.toCanvas(canvasRef.current, `solana:${SOLANA_ADDRESS}`, {
       width: 180,
       margin: 0,
-      color: { dark: '#2A241C', light: '#00000000' }
+      color: {
+        dark: isDark ? '#EFE6D0' : '#2A241C',
+        light: '#00000000'
+      }
     })
   }, [])
 
@@ -54,7 +58,7 @@ export default function SupportModal({ onClose }: Props) {
         {/* QR code */}
         <div className="mt-5 flex justify-center">
           <div className="rounded-xl border border-border bg-bg p-4">
-            <canvas ref={canvasRef} className="block dark:invert dark:brightness-90" />
+            <canvas ref={canvasRef} className="block" />
           </div>
         </div>
 

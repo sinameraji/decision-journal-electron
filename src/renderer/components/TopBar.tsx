@@ -1,12 +1,14 @@
 import { useState } from 'react'
-import { Search, User, Lock, X } from 'lucide-react'
+import { Search, User, Lock, X, Heart } from 'lucide-react'
 import ThemeToggle from './ThemeToggle'
 import AvatarMenu from './AvatarMenu'
+import SupportModal from './SupportModal'
 import { useAuthStore } from '../store/auth'
 import { useDecisionsStore } from '../store/decisions'
 
 export default function TopBar() {
   const [menuOpen, setMenuOpen] = useState(false)
+  const [showSupport, setShowSupport] = useState(false)
   const lock = useAuthStore((s) => s.lock)
   const query = useDecisionsStore((s) => s.query)
   const setQuery = useDecisionsStore((s) => s.setQuery)
@@ -44,6 +46,14 @@ export default function TopBar() {
       <div className="no-drag relative ml-auto flex items-center gap-2">
         <button
           type="button"
+          aria-label="Support this project"
+          onClick={() => setShowSupport(true)}
+          className="flex h-9 w-9 items-center justify-center rounded-full text-text-muted/50 transition-colors hover:text-red-400"
+        >
+          <Heart size={15} strokeWidth={1.75} />
+        </button>
+        <button
+          type="button"
           aria-label="Profile menu"
           aria-haspopup="menu"
           aria-expanded={menuOpen}
@@ -54,6 +64,8 @@ export default function TopBar() {
         </button>
         {menuOpen && <AvatarMenu onRequestClose={() => setMenuOpen(false)} />}
       </div>
+
+      {showSupport && <SupportModal onClose={() => setShowSupport(false)} />}
     </header>
   )
 }
