@@ -40,6 +40,9 @@ mac:
 dmg:
   artifactName: ${productName}-${version}-universal.dmg
 
+zip:
+  artifactName: ${productName}-${version}-universal-mac.zip
+
 publish:
   provider: github
   owner: sinameraji
