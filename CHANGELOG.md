@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.1](https://github.com/sinameraji/decision-journal-electron/compare/v0.4.0...v0.4.1) (2026-04-12)
+
+
+### Bug Fixes
+
+* pass --publish never to electron-builder in CI ([5f16c91](https://github.com/sinameraji/decision-journal-electron/commit/5f16c916f28d646025af10a30af0be9e288f5b36))
+* pass --publish never to electron-builder in CI ([79707f7](https://github.com/sinameraji/decision-journal-electron/commit/79707f70f1e7e32ec3df17bbeb9cd0704e0c200e))
+
 ## [0.4.0](https://github.com/sinameraji/decision-journal-electron/compare/v0.3.1...v0.4.0) (2026-04-12)
 
 
