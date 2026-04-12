@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Fingerprint, Lock, Mic, Download, Trash2, Loader2, CheckCircle2, AlertTriangle, HardDriveDownload } from 'lucide-react'
+import { Fingerprint, Lock, Mic, Download, Trash2, Loader2, CheckCircle2, AlertTriangle, HardDriveDownload, Heart } from 'lucide-react'
 import PinPad from '../components/PinPad'
+import SupportModal from '../components/SupportModal'
 import { useAuthStore } from '../store/auth'
 import { useTranscriptionStore } from '../store/transcription'
 import type { WhisperModelInfo } from '@shared/ipc-contract'
@@ -28,6 +29,7 @@ export default function Settings() {
   const [restoreFolder, setRestoreFolder] = useState<string | null>(null)
   const [modelBusy, setModelBusy] = useState<string | null>(null)
   const [justDeleted, setJustDeleted] = useState<string | null>(null)
+  const [showSupport, setShowSupport] = useState(false)
 
   useEffect(() => {
     window.api.app.version().then(setVersion)
@@ -250,6 +252,32 @@ export default function Settings() {
           <div className="mt-1 text-text-muted">Created by Sina Meraji</div>
         </div>
       </section>
+
+      <section className="mt-8">
+        <h2 className="mb-3 text-[13px] font-semibold uppercase tracking-wide text-text-muted">
+          Support
+        </h2>
+        <div className="flex items-center gap-4 rounded-xl border border-border bg-bg-elevated px-5 py-4">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-bg text-text">
+            <Heart size={16} strokeWidth={1.75} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-[13.5px] font-medium text-text">Support this project</div>
+            <div className="mt-0.5 text-[12px] text-text-muted">
+              Free and open source, built independently. Donations help keep it going.
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowSupport(true)}
+            className="rounded-md border border-border bg-bg px-3 py-1.5 text-[12px] text-text hover:bg-nav-active"
+          >
+            Donate
+          </button>
+        </div>
+      </section>
+
+      {showSupport && <SupportModal onClose={() => setShowSupport(false)} />}
 
       {pinModal === 'enable-touchid' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">

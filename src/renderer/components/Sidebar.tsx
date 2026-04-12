@@ -1,8 +1,11 @@
+import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
-import { Command } from 'lucide-react'
+import { Command, Heart } from 'lucide-react'
 import { NAV } from '../nav'
+import SupportModal from './SupportModal'
 
 export default function Sidebar() {
+  const [showSupport, setShowSupport] = useState(false)
   return (
     <aside className="drag-region flex h-full w-[200px] shrink-0 flex-col border-r border-border bg-sidebar">
       {/* Traffic-light strip (drag region, intentionally empty) */}
@@ -49,7 +52,17 @@ export default function Sidebar() {
           </span>
         </div>
         <div className="opacity-70">All data stored locally</div>
+        <button
+          type="button"
+          onClick={() => setShowSupport(true)}
+          className="mt-1 flex items-center gap-1.5 opacity-50 transition-opacity hover:opacity-80"
+        >
+          <Heart size={11} strokeWidth={2} />
+          <span>Support this project</span>
+        </button>
       </div>
+
+      {showSupport && <SupportModal onClose={() => setShowSupport(false)} />}
     </aside>
   )
 }

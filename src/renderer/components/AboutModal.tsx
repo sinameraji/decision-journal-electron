@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { Heart } from 'lucide-react'
+import SupportModal from './SupportModal'
 
 const GITHUB_URL = 'https://github.com/sinameraji/decision-journal-electron'
 
@@ -8,6 +10,7 @@ interface Props {
 
 export default function AboutModal({ onClose }: Props) {
   const [version, setVersion] = useState('')
+  const [showSupport, setShowSupport] = useState(false)
 
   useEffect(() => {
     window.api.app.version().then(setVersion)
@@ -43,13 +46,23 @@ export default function AboutModal({ onClose }: Props) {
         </div>
 
         <div className="mt-6 flex items-center justify-between gap-2">
-          <button
-            type="button"
-            onClick={openGithub}
-            className="rounded-md border border-border bg-bg px-3 py-1.5 text-[12.5px] text-text hover:bg-nav-active"
-          >
-            View on GitHub
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={openGithub}
+              className="rounded-md border border-border bg-bg px-3 py-1.5 text-[12.5px] text-text hover:bg-nav-active"
+            >
+              View on GitHub
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowSupport(true)}
+              className="flex items-center gap-1.5 rounded-md border border-border bg-bg px-3 py-1.5 text-[12.5px] text-text hover:bg-nav-active"
+            >
+              <Heart size={12} strokeWidth={1.75} />
+              Support
+            </button>
+          </div>
           <button
             type="button"
             onClick={onClose}
@@ -59,6 +72,8 @@ export default function AboutModal({ onClose }: Props) {
           </button>
         </div>
       </div>
+
+      {showSupport && <SupportModal onClose={() => setShowSupport(false)} />}
     </div>
   )
 }
