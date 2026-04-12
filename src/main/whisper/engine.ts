@@ -1,6 +1,7 @@
-import { Whisper } from 'smart-whisper'
 import { modelPath, isInstalled } from './models'
 import { getActiveModel } from './config'
+
+type Whisper = import('smart-whisper').Whisper
 
 let instance: Whisper | null = null
 let loadedModelName: string | null = null
@@ -18,6 +19,7 @@ async function ensureLoaded(): Promise<Whisper> {
     loadedModelName = null
   }
 
+  const { Whisper } = await import('smart-whisper')
   const file = modelPath(name)
   instance = new Whisper(file, { gpu: true })
   await instance.load()
