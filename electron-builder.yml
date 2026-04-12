@@ -37,10 +37,10 @@ mac:
     LSApplicationCategoryType: public.app-category.productivity
     NSMicrophoneUsageDescription: Decision Journal uses your microphone only to transcribe journal entries locally. Audio never leaves your device.
 
-artifactName: ${productName}-${version}-universal-mac.${ext}
+artifactName: DecisionJournal-${version}-universal-mac.${ext}
 
 dmg:
-  artifactName: ${productName}-${version}-universal.dmg
+  artifactName: DecisionJournal-${version}-universal.dmg
 
 publish:
   provider: github
