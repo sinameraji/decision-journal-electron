@@ -1,11 +1,27 @@
 import { app, ipcMain, nativeTheme } from 'electron'
 import { join } from 'node:path'
 import type Database from 'better-sqlite3-multiple-ciphers'
-import type { ThemeMode, UnlockResult, VaultStatus } from '@shared/ipc-contract'
+import type {
+  CreateDecisionInput,
+  ReviewDecisionInput,
+  ThemeMode,
+  UnlockResult,
+  VaultStatus
+} from '@shared/ipc-contract'
 import { Vault, isValidPinFormat } from './crypto/vault'
 import { canPromptTouchId, promptTouchId } from './crypto/keychain'
 import { closeDb, openEncryptedDb } from './db/open'
-import { listDecisions, seedIfEmpty } from './db/seed'
+import {
+  createDecision,
+  getAnalyticsSummary,
+  getCadence,
+  getCalibration,
+  getCategoryStats,
+  getProcessOutcome,
+  listDecisions,
+  reviewDecision,
+  seedIfEmpty
+} from './db/seed'
 import { applyThemeMode, loadThemePreference, saveThemePreference } from './theme'
 
 type DB = Database.Database
@@ -161,6 +177,41 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('decisions:list', async () => {
     if (!session.db) return []
     return listDecisions(session.db)
+  })
+
+  ipcMain.handle('decisions:create', async (_evt, input: CreateDecisionInput) => {
+    if (!session.db) throw new Error('vault locked')
+    return createDecision(session.db, input)
+  })
+
+  ipcMain.handle('decisions:review', async (_evt, input: ReviewDecisionInput) => {
+    if (!session.db) throw new Error('vault locked')
+    return reviewDecision(session.db, input)
+  })
+
+  ipcMain.handle('analytics:summary', async () => {
+    if (!session.db) return { totalDecisions: 0, totalResolved: 0, firstDecisionAt: null }
+    return getAnalyticsSummary(session.db)
+  })
+
+  ipcMain.handle('analytics:calibration', async () => {
+    if (!session.db) return { buckets: [], totalResolved: 0, brier: null }
+    return getCalibration(session.db)
+  })
+
+  ipcMain.handle('analytics:category-stats', async () => {
+    if (!session.db) return []
+    return getCategoryStats(session.db)
+  })
+
+  ipcMain.handle('analytics:process-outcome', async () => {
+    if (!session.db) return []
+    return getProcessOutcome(session.db)
+  })
+
+  ipcMain.handle('analytics:cadence', async (_evt, days: number) => {
+    if (!session.db) return []
+    return getCadence(session.db, days)
   })
 
   ipcMain.handle('theme:get', async (): Promise<ThemeMode> => loadThemePreference())

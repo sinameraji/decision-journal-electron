@@ -16,7 +16,16 @@ const api: Api = {
     unlockWithTouchId: () => ipcRenderer.invoke('vault:unlock-touchid')
   },
   decisions: {
-    list: (): Promise<Decision[]> => ipcRenderer.invoke('decisions:list')
+    list: (): Promise<Decision[]> => ipcRenderer.invoke('decisions:list'),
+    create: (input) => ipcRenderer.invoke('decisions:create', input),
+    review: (input) => ipcRenderer.invoke('decisions:review', input)
+  },
+  analytics: {
+    summary: () => ipcRenderer.invoke('analytics:summary'),
+    calibration: () => ipcRenderer.invoke('analytics:calibration'),
+    categoryStats: () => ipcRenderer.invoke('analytics:category-stats'),
+    processOutcome: () => ipcRenderer.invoke('analytics:process-outcome'),
+    cadence: (days: number) => ipcRenderer.invoke('analytics:cadence', days)
   },
   theme: {
     get: (): Promise<ThemeMode> => ipcRenderer.invoke('theme:get'),

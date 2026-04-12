@@ -4,22 +4,64 @@ import { dirname } from 'node:path'
 
 type DB = Database.Database
 
-const MIGRATION_SQL = `
+const BASE_SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS decisions (
-  id         TEXT PRIMARY KEY,
-  title      TEXT NOT NULL,
-  body       TEXT NOT NULL DEFAULT '',
-  created_at INTEGER NOT NULL,
-  review_at  INTEGER,
-  is_sample  INTEGER NOT NULL DEFAULT 0
+  id                      TEXT PRIMARY KEY,
+  title                   TEXT NOT NULL,
+  body                    TEXT NOT NULL DEFAULT '',
+  created_at              INTEGER NOT NULL,
+  review_at               INTEGER,
+  is_sample               INTEGER NOT NULL DEFAULT 0,
+  confidence              INTEGER,
+  category                TEXT,
+  stakes                  TEXT,
+  predicted_outcome       TEXT,
+  alternatives_considered TEXT,
+  resolved_at             INTEGER,
+  actual_outcome          TEXT,
+  result                  TEXT,
+  process_quality         INTEGER,
+  outcome_quality         INTEGER,
+  lessons                 TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_decisions_created_at ON decisions(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_decisions_resolved_at ON decisions(resolved_at);
 
 CREATE TABLE IF NOT EXISTS meta (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
 `
+
+const DECISION_COLUMN_ADDITIONS: Array<[string, string]> = [
+  ['confidence', 'INTEGER'],
+  ['category', 'TEXT'],
+  ['stakes', 'TEXT'],
+  ['predicted_outcome', 'TEXT'],
+  ['alternatives_considered', 'TEXT'],
+  ['resolved_at', 'INTEGER'],
+  ['actual_outcome', 'TEXT'],
+  ['result', 'TEXT'],
+  ['process_quality', 'INTEGER'],
+  ['outcome_quality', 'INTEGER'],
+  ['lessons', 'TEXT']
+]
+
+function runMigrations(db: DB): void {
+  db.exec(BASE_SCHEMA_SQL)
+
+  const existingCols = new Set(
+    (db.prepare('PRAGMA table_info(decisions)').all() as Array<{ name: string }>).map(
+      (r) => r.name
+    )
+  )
+  for (const [name, type] of DECISION_COLUMN_ADDITIONS) {
+    if (!existingCols.has(name)) {
+      db.exec(`ALTER TABLE decisions ADD COLUMN ${name} ${type}`)
+    }
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_decisions_resolved_at ON decisions(resolved_at)')
+}
 
 export async function openEncryptedDb(dbPath: string, masterKey: Buffer): Promise<DB> {
   await fs.mkdir(dirname(dbPath), { recursive: true })
@@ -45,7 +87,7 @@ export async function openEncryptedDb(dbPath: string, masterKey: Buffer): Promis
   db.pragma('synchronous = NORMAL')
   db.pragma('foreign_keys = ON')
 
-  db.exec(MIGRATION_SQL)
+  runMigrations(db)
 
   try {
     await fs.chmod(dbPath, 0o600)
