@@ -7,7 +7,8 @@ const ALLOWED_MODEL_URLS = [
 const ALLOWED_CDN_PREFIXES = [
   'https://cdn-lfs.huggingface.co/',
   'https://cdn-lfs-us-1.huggingface.co/',
-  'https://cdn-lfs-eu-1.huggingface.co/'
+  'https://cdn-lfs-eu-1.huggingface.co/',
+  'https://cas-bridge.xethub.hf.co/'
 ]
 
 const GATE_TIMEOUT_MS = 120_000
