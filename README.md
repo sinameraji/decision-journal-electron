@@ -1,5 +1,14 @@
 # Decision Journal
 
+[![macOS](https://img.shields.io/badge/macOS-11%2B-000000?logo=apple&logoColor=white)](https://github.com/sinameraji/decision-journal-electron/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![GitHub release](https://img.shields.io/github/v/release/sinameraji/decision-journal-electron)](https://github.com/sinameraji/decision-journal-electron/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/sinameraji/decision-journal-electron/total)](https://github.com/sinameraji/decision-journal-electron/releases/latest)
+[![Offline Only](https://img.shields.io/badge/network-offline%20only-green)]()
+[![Encrypted](https://img.shields.io/badge/encryption-AES--256%20%2B%20Argon2id-purple)]()
+
+[**Download for Mac**](https://github.com/sinameraji/decision-journal-electron/releases/latest/download/Decision.Journal-0.2.0-universal.dmg)
+
 A private, offline journal for the decisions you make — and the ones you want to get better at.
 
 Inspired by [Farnam Street's decision journal practice](https://fs.blog/decision-journal/): write down a decision as you're making it, come back to it months later, log how it actually played out, and slowly build a real picture of your own judgment over time.
