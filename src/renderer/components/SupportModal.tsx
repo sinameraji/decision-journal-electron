@@ -62,8 +62,12 @@ export default function SupportModal({ onClose }: Props) {
           </div>
         </div>
 
-        <p className="mt-3 text-center text-[11px] text-text-muted">
-          Scan with Phantom or any Solana wallet
+        <p className="mt-3 flex items-center justify-center gap-1 text-[11px] text-text-muted">
+          <span>Scan with</span>
+          <svg viewBox="0 0 128 128" fill="currentColor" className="inline-block h-3.5 w-3.5">
+            <path d="M110.6 30.4C102 14 84.2 3.2 64 3.2S26 14 17.4 30.4C10.8 42.6 4.8 62.8 4.8 80c0 22 8.2 33.6 18.4 38.8 5 2.6 10.6 3.6 15.8 3.6 6.4 0 12.2-1.6 16-3.2 2.4-1 5.2-1.6 8-1.6h2c2.8 0 5.6.6 8 1.6 3.8 1.6 9.6 3.2 16 3.2 5.2 0 10.8-1 15.8-3.6C115 113.6 123.2 102 123.2 80c0-17.2-6-37.4-12.6-49.6zM44 80a8 8 0 1 1 0-16 8 8 0 0 1 0 16zm40 0a8 8 0 1 1 0-16 8 8 0 0 1 0 16z" />
+          </svg>
+          <span>Phantom or any Solana wallet</span>
         </p>
 
         {/* Wallet address + copy */}
