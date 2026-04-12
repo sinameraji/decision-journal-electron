@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.5](https://github.com/sinameraji/decision-journal-electron/compare/v0.4.4...v0.4.5) (2026-04-12)
+
+
+### Bug Fixes
+
+* add explicit zip artifactName for auto-update ([918c135](https://github.com/sinameraji/decision-journal-electron/commit/918c135febd0dfcca42c548a09d2602fd92e534c))
+* add explicit zip artifactName to match latest-mac.yml ([535d0a0](https://github.com/sinameraji/decision-journal-electron/commit/535d0a0f05714ff951d89164a4ac5e5aad116007))
+
 ## [0.4.4](https://github.com/sinameraji/decision-journal-electron/compare/v0.4.3...v0.4.4) (2026-04-12)
 
 
