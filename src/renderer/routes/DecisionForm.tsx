@@ -274,11 +274,14 @@ export default function DecisionForm({ mode }: { mode: Mode }) {
     try {
       const input = formToInput(form)
       if (mode === 'create') {
-        await window.api.decisions.create(input)
+        const created = await window.api.decisions.create(input)
+        navigate(`/decisions/${created.id}`)
       } else if (id) {
         await window.api.decisions.update(id, input)
+        navigate(`/decisions/${id}`)
+      } else {
+        navigate('/decisions')
       }
-      navigate('/decisions')
     } catch (err) {
       console.error('save decision failed', err)
       setSaving(false)
@@ -449,6 +452,7 @@ export default function DecisionForm({ mode }: { mode: Mode }) {
           </Card>
         )}
       </div>
+
 
       <div className="mt-6 flex items-center justify-between">
         <button

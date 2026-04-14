@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import Unlock from './routes/Unlock'
 import Decisions from './routes/Decisions'
+import DecisionDetail from './routes/DecisionDetail'
 import NewDecision from './routes/NewDecision'
 import EditDecision from './routes/EditDecision'
 import Reviews from './routes/Reviews'
@@ -40,6 +41,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/decisions" replace />} />
         <Route path="/decisions" element={<Decisions />} />
+        <Route path="/decisions/:id" element={<DecisionDetail />} />
         <Route path="/decisions/:id/edit" element={<EditDecision />} />
         <Route path="/new" element={<NewDecision />} />
         <Route path="/reviews" element={<Reviews />} />

@@ -59,6 +59,9 @@ import { buildCoachSystemPrompt } from './ollama/systemPrompt'
 import { applyThemeMode, loadThemePreference, saveThemePreference } from './theme'
 import { checkForUpdates, downloadUpdate, installUpdate } from './updater'
 import { loadUpdatePrefs, saveUpdatePrefs } from './updatePrefs'
+import { buildLensUserMessage } from './ollama/lensPrompts'
+import type { LensConversationSeed, LensKind } from '@shared/ipc-contract'
+import { LENS_KINDS, LENS_LABELS } from '@shared/ipc-contract'
 import { MODEL_CATALOG, listInstalled, isInstalled, modelPath } from './whisper/models'
 import { getActiveModel, setActiveModel } from './whisper/config'
 import { downloadModel, cancelDownload } from './whisper/download'
@@ -766,6 +769,23 @@ export function registerIpcHandlers(): void {
       })()
 
       return requestId
+    }
+  )
+
+  ipcMain.handle(
+    'lenses:prepare-conversation',
+    async (_evt, decisionId: string, kind: LensKind): Promise<LensConversationSeed> => {
+      if (!session.db) throw new Error('vault-locked')
+      if (!LENS_KINDS.includes(kind)) throw new Error('invalid-lens-kind')
+
+      const decision = getDecision(session.db, decisionId)
+      if (!decision) throw new Error('decision-not-found')
+
+      const rawTitle = `${LENS_LABELS[kind]} — ${decision.title}`
+      const title = rawTitle.length > 80 ? rawTitle.slice(0, 77) + '…' : rawTitle
+      const firstMessage = buildLensUserMessage(decision, kind)
+
+      return { title, firstMessage }
     }
   )
 

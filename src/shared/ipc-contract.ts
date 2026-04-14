@@ -195,6 +195,36 @@ export function serializeOptions(options: DecisionOption[]): string {
   return JSON.stringify(options)
 }
 
+export const LENS_KINDS = [
+  'opportunity-cost',
+  'pre-mortem',
+  'regret-minimization',
+  'counterparty-incentives'
+] as const
+
+export type LensKind = (typeof LENS_KINDS)[number]
+
+export const LENS_LABELS: Record<LensKind, string> = {
+  'opportunity-cost': 'Opportunity Cost',
+  'pre-mortem': 'Pre-mortem',
+  'regret-minimization': 'Regret Minimization',
+  'counterparty-incentives': 'Counterparty Incentives'
+}
+
+export const LENS_DESCRIPTIONS: Record<LensKind, string> = {
+  'opportunity-cost': "What you're really giving up by picking this one.",
+  'pre-mortem': "Assume it failed in 12 months — what went wrong?",
+  'regret-minimization':
+    'Project ten years out — which option would you regret more?',
+  'counterparty-incentives':
+    "Who else is in this decision, and how do their incentives change the payoff?"
+}
+
+export interface LensConversationSeed {
+  title: string
+  firstMessage: string
+}
+
 export interface WhisperModelInfo {
   name: string
   label: string
@@ -310,6 +340,9 @@ export interface Api {
     chat(modelId: string, messages: ChatMsg[]): Promise<string>
     onEvent(cb: (evt: OllamaEvent) => void): () => void
     openExternal(url: string): Promise<void>
+  }
+  lenses: {
+    prepareConversation(decisionId: string, kind: LensKind): Promise<LensConversationSeed>
   }
 }
 

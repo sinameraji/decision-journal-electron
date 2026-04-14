@@ -13,6 +13,8 @@ import type {
   ImportResult,
   ReplaceFromBackupResult,
   InstalledModel,
+  LensConversationSeed,
+  LensKind,
   ModelInfo,
   OllamaEvent,
   OllamaStatus,
@@ -140,6 +142,13 @@ const api: Api = {
     },
     openExternal: (url: string): Promise<void> =>
       ipcRenderer.invoke('ollama:open-external', url)
+  },
+  lenses: {
+    prepareConversation: (
+      decisionId: string,
+      kind: LensKind
+    ): Promise<LensConversationSeed> =>
+      ipcRenderer.invoke('lenses:prepare-conversation', decisionId, kind)
   }
 }
 

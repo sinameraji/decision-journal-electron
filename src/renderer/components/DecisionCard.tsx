@@ -34,6 +34,7 @@ export default function DecisionCard({
   const preview = decision.situation?.trim()
   const hasPreview = preview && preview.length > 0
 
+  const openDetail = () => navigate(`/decisions/${decision.id}`)
   const openEdit = () => navigate(`/decisions/${decision.id}/edit`)
 
   const stop = (e: MouseEvent) => {
@@ -42,9 +43,9 @@ export default function DecisionCard({
 
   return (
     <article
-      onClick={openEdit}
+      onClick={openDetail}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') openEdit()
+        if (e.key === 'Enter') openDetail()
       }}
       tabIndex={0}
       role="button"

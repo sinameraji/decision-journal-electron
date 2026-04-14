@@ -127,6 +127,28 @@ const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation
         ON chat_messages(conversation_id, created_at ASC);
     `
+  },
+  {
+    version: 5,
+    sql: `
+      CREATE TABLE IF NOT EXISTS decision_lenses (
+        id          TEXT PRIMARY KEY,
+        decision_id TEXT NOT NULL REFERENCES decisions(id) ON DELETE CASCADE,
+        kind        TEXT NOT NULL,
+        content     TEXT NOT NULL,
+        model_id    TEXT NOT NULL,
+        created_at  INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_decision_lenses_decision
+        ON decision_lenses(decision_id, created_at DESC);
+    `
+  },
+  {
+    version: 6,
+    sql: `
+      DROP INDEX IF EXISTS idx_decision_lenses_decision;
+      DROP TABLE IF EXISTS decision_lenses;
+    `
   }
 ]
 
