@@ -13,9 +13,8 @@ import type {
   ImportResult,
   ReplaceFromBackupResult,
   InstalledModel,
-  LensEvent,
+  LensConversationSeed,
   LensKind,
-  LensRecord,
   ModelInfo,
   OllamaEvent,
   OllamaStatus,
@@ -145,18 +144,11 @@ const api: Api = {
       ipcRenderer.invoke('ollama:open-external', url)
   },
   lenses: {
-    list: (decisionId: string): Promise<LensRecord[]> =>
-      ipcRenderer.invoke('lenses:list', decisionId),
-    run: (decisionId: string, kind: LensKind, modelId: string): Promise<string> =>
-      ipcRenderer.invoke('lenses:run', decisionId, kind, modelId),
-    cancel: (requestId: string): Promise<void> =>
-      ipcRenderer.invoke('lenses:cancel', requestId),
-    delete: (id: string): Promise<void> => ipcRenderer.invoke('lenses:delete', id),
-    onEvent: (cb: (evt: LensEvent) => void) => {
-      const listener = (_: unknown, evt: LensEvent) => cb(evt)
-      ipcRenderer.on('lenses:event', listener)
-      return () => ipcRenderer.removeListener('lenses:event', listener)
-    }
+    prepareConversation: (
+      decisionId: string,
+      kind: LensKind
+    ): Promise<LensConversationSeed> =>
+      ipcRenderer.invoke('lenses:prepare-conversation', decisionId, kind)
   }
 }
 

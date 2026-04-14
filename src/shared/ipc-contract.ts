@@ -220,20 +220,10 @@ export const LENS_DESCRIPTIONS: Record<LensKind, string> = {
     "Who else is in this decision, and how do their incentives change the payoff?"
 }
 
-export interface LensRecord {
-  id: string
-  decisionId: string
-  kind: LensKind
-  content: string
-  modelId: string
-  createdAt: number
+export interface LensConversationSeed {
+  title: string
+  firstMessage: string
 }
-
-export type LensEvent =
-  | { requestId: string; type: 'token'; token: string }
-  | { requestId: string; type: 'done'; lens: LensRecord }
-  | { requestId: string; type: 'error'; message: string }
-  | { requestId: string; type: 'cancelled' }
 
 export interface WhisperModelInfo {
   name: string
@@ -352,11 +342,7 @@ export interface Api {
     openExternal(url: string): Promise<void>
   }
   lenses: {
-    list(decisionId: string): Promise<LensRecord[]>
-    run(decisionId: string, kind: LensKind, modelId: string): Promise<string>
-    cancel(requestId: string): Promise<void>
-    delete(id: string): Promise<void>
-    onEvent(cb: (evt: LensEvent) => void): () => void
+    prepareConversation(decisionId: string, kind: LensKind): Promise<LensConversationSeed>
   }
 }
 

@@ -142,6 +142,13 @@ const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_decision_lenses_decision
         ON decision_lenses(decision_id, created_at DESC);
     `
+  },
+  {
+    version: 6,
+    sql: `
+      DROP INDEX IF EXISTS idx_decision_lenses_decision;
+      DROP TABLE IF EXISTS decision_lenses;
+    `
   }
 ]
 
