@@ -2,6 +2,7 @@ import { app, BrowserWindow, shell, session, nativeImage } from 'electron'
 import { join } from 'node:path'
 import { clearSessionOnQuit, registerIpcHandlers } from './ipc'
 import { checkForUpdates } from './updater'
+import { loadUpdatePrefs } from './updatePrefs'
 import { applyThemeMode, loadThemePreference, wireNativeThemeBroadcast } from './theme'
 import { isUrlAllowedByGate } from './whisper/download-gate'
 
@@ -133,7 +134,10 @@ app.whenReady().then(async () => {
   wireNativeThemeBroadcast(() => mainWindow)
 
   if (app.isPackaged) {
-    checkForUpdates().catch(() => {})
+    const prefs = await loadUpdatePrefs()
+    if (prefs.autoCheckEnabled) {
+      checkForUpdates().catch(() => {})
+    }
   }
 
   app.on('activate', () => {

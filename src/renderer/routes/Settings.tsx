@@ -31,12 +31,19 @@ export default function Settings() {
   const [justDeleted, setJustDeleted] = useState<string | null>(null)
   const [showSupport, setShowSupport] = useState(false)
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ state: 'idle' })
+  const [autoUpdateEnabled, setAutoUpdateEnabledState] = useState<boolean>(true)
 
   useEffect(() => {
     window.api.app.version().then(setVersion)
+    window.api.app.getAutoUpdateEnabled().then(setAutoUpdateEnabledState)
     refreshStatus()
     refreshTranscription()
   }, [refreshStatus, refreshTranscription])
+
+  async function handleToggleAutoUpdate(next: boolean) {
+    setAutoUpdateEnabledState(next)
+    await window.api.app.setAutoUpdateEnabled(next)
+  }
 
   useEffect(() => {
     const unsub = window.api.app.onUpdateStatus(setUpdateStatus)
@@ -257,6 +264,17 @@ export default function Settings() {
           </div>
           <div className="mt-1 text-text-muted">Created by Sina Meraji</div>
           <div className="mt-3 border-t border-border pt-3">
+            <div className="flex items-center justify-between">
+              <div className="min-w-0 pr-4">
+                <div className="text-[13px] text-text">Check for updates automatically</div>
+                <div className="mt-0.5 text-[11.5px] text-text-muted">
+                  Contacts github.com once per launch. Turn off to stay fully offline.
+                </div>
+              </div>
+              <Toggle checked={autoUpdateEnabled} onChange={handleToggleAutoUpdate} />
+            </div>
+          </div>
+          <div className="mt-3 border-t border-border pt-3">
             <UpdateRow status={updateStatus} />
           </div>
         </div>
@@ -442,7 +460,7 @@ function Toggle({
       className={[
         'relative inline-flex h-6 w-10 shrink-0 items-center rounded-full border transition-colors',
         checked
-          ? 'border-[rgb(var(--accent))] bg-[rgb(var(--accent))]'
+          ? 'border-[rgb(var(--accent))] bg-[rgb(var(--accent))] dark:border-text dark:bg-text'
           : 'border-border bg-border/50',
         disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
       ].join(' ')}
@@ -456,8 +474,8 @@ function Toggle({
       />
       <span
         className={[
-          'pointer-events-none absolute left-[2px] h-[18px] w-[18px] rounded-full bg-white shadow-sm transition-transform',
-          checked ? 'translate-x-[16px]' : 'translate-x-0'
+          'pointer-events-none absolute left-[2px] h-[18px] w-[18px] rounded-full shadow-sm transition-transform',
+          checked ? 'translate-x-[16px] bg-white dark:bg-bg' : 'translate-x-0 bg-white',
         ].join(' ')}
       />
     </label>

@@ -239,6 +239,8 @@ export interface Api {
     checkForUpdates(): Promise<void>
     downloadUpdate(): Promise<void>
     installUpdate(): Promise<void>
+    getAutoUpdateEnabled(): Promise<boolean>
+    setAutoUpdateEnabled(enabled: boolean): Promise<void>
     onUpdateStatus(cb: (status: UpdateStatus) => void): () => void
   }
   transcription: {
