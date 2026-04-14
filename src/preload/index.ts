@@ -91,6 +91,10 @@ const api: Api = {
     checkForUpdates: (): Promise<void> => ipcRenderer.invoke('app:check-for-updates'),
     downloadUpdate: (): Promise<void> => ipcRenderer.invoke('app:download-update'),
     installUpdate: (): Promise<void> => ipcRenderer.invoke('app:install-update'),
+    getAutoUpdateEnabled: (): Promise<boolean> =>
+      ipcRenderer.invoke('app:get-auto-update-enabled'),
+    setAutoUpdateEnabled: (enabled: boolean): Promise<void> =>
+      ipcRenderer.invoke('app:set-auto-update-enabled', enabled),
     onUpdateStatus: (cb: (status: UpdateStatus) => void) => {
       const listener = (_: unknown, status: UpdateStatus) => cb(status)
       ipcRenderer.on('app:update-status', listener)
