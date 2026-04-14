@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.0](https://github.com/sinameraji/decision-journal-electron/compare/v0.4.7...v0.5.0) (2026-04-14)
+
+
+### Features
+
+* allow disabling auto update checks + honest network-activity docs ([dda77a6](https://github.com/sinameraji/decision-journal-electron/commit/dda77a637aaba2356c00277a2fd86baaa402f217))
+* structured options for decisions + Farnam Street attribution ([c0577a9](https://github.com/sinameraji/decision-journal-electron/commit/c0577a915d7150d780e9e9d9189d3d92723a9abd))
+
 ## [0.4.7](https://github.com/sinameraji/decision-journal-electron/compare/v0.4.6...v0.4.7) (2026-04-12)
 
 
