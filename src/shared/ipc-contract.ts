@@ -149,6 +149,52 @@ export type DecisionUpdateInput = Partial<DecisionCreateInput>
 
 export type DecisionReviewInput = Pick<Decision, 'outcome' | 'lessonsLearned'>
 
+export interface DecisionOption {
+  id: string
+  name: string
+  note: string
+  chosen: boolean
+}
+
+export type ParsedAlternatives =
+  | { kind: 'empty' }
+  | { kind: 'legacy'; text: string }
+  | { kind: 'structured'; options: DecisionOption[] }
+
+export function parseAlternatives(raw: string | null | undefined): ParsedAlternatives {
+  if (raw == null) return { kind: 'empty' }
+  if (raw.trim() === '') return { kind: 'empty' }
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return { kind: 'legacy', text: raw }
+  }
+
+  if (!Array.isArray(parsed)) return { kind: 'legacy', text: raw }
+
+  const options: DecisionOption[] = []
+  for (const item of parsed) {
+    if (item == null || typeof item !== 'object') return { kind: 'legacy', text: raw }
+    const o = item as Record<string, unknown>
+    if (
+      typeof o.id !== 'string' ||
+      typeof o.name !== 'string' ||
+      typeof o.note !== 'string' ||
+      typeof o.chosen !== 'boolean'
+    ) {
+      return { kind: 'legacy', text: raw }
+    }
+    options.push({ id: o.id, name: o.name, note: o.note, chosen: o.chosen })
+  }
+  return { kind: 'structured', options }
+}
+
+export function serializeOptions(options: DecisionOption[]): string {
+  return JSON.stringify(options)
+}
+
 export interface WhisperModelInfo {
   name: string
   label: string

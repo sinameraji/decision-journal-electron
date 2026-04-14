@@ -65,7 +65,8 @@ import { downloadModel, cancelDownload } from './whisper/download'
 import { transcribe, freeEngine } from './whisper/engine'
 
 const ALLOWED_EXTERNAL_URL_PREFIXES = [
-  'https://github.com/sinameraji/'
+  'https://github.com/sinameraji/',
+  'https://fs.blog/decision-journal/'
 ]
 
 const OLLAMA_EXTERNAL_URL_ALLOWLIST = new Set([

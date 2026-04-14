@@ -263,6 +263,19 @@ export default function Settings() {
             <span>v{version || '…'}</span>
           </div>
           <div className="mt-1 text-text-muted">Created by Sina Meraji</div>
+          <div className="mt-1 text-text-muted">
+            Inspired by{' '}
+            <button
+              type="button"
+              onClick={() =>
+                window.api.app.openExternal('https://fs.blog/decision-journal/')
+              }
+              className="underline underline-offset-2 hover:text-text"
+            >
+              Farnam Street's decision journal
+            </button>{' '}
+            practice.
+          </div>
           <div className="mt-3 border-t border-border pt-3">
             <div className="flex items-center justify-between">
               <div className="min-w-0 pr-4">

@@ -7,12 +7,15 @@ import {
   type ReactNode
 } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Check } from 'lucide-react'
+import { ArrowLeft, Check, Plus, Trash2 } from 'lucide-react'
 import {
   MENTAL_STATES,
   MENTAL_STATE_LABELS,
+  parseAlternatives,
+  serializeOptions,
   type Decision,
   type DecisionCreateInput,
+  type DecisionOption,
   type MentalState
 } from '@shared/ipc-contract'
 import { DatePicker, DateTimePicker } from '../components/DateTimePicker'
@@ -30,9 +33,14 @@ interface FormState {
   problemStatement: string
   variables: string
   complications: string
-  alternatives: string
+  options: DecisionOption[]
+  migratedFromLegacy: boolean
   rangeOfOutcomes: string
   expectedOutcome: string
+}
+
+function makeBlankOption(chosen = false): DecisionOption {
+  return { id: crypto.randomUUID(), name: '', note: '', chosen }
 }
 
 const SIX_MONTHS_MS = 1000 * 60 * 60 * 24 * 182
@@ -82,13 +90,26 @@ function emptyForm(): FormState {
     problemStatement: '',
     variables: '',
     complications: '',
-    alternatives: '',
+    options: [makeBlankOption(), makeBlankOption()],
+    migratedFromLegacy: false,
     rangeOfOutcomes: '',
     expectedOutcome: ''
   }
 }
 
 function decisionToForm(d: Decision): FormState {
+  const parsed = parseAlternatives(d.alternatives)
+  let options: DecisionOption[]
+  let migratedFromLegacy = false
+  if (parsed.kind === 'structured') {
+    options = parsed.options.length > 0 ? parsed.options : [makeBlankOption()]
+  } else if (parsed.kind === 'legacy') {
+    options = [{ id: crypto.randomUUID(), name: '', note: parsed.text, chosen: false }]
+    migratedFromLegacy = true
+  } else {
+    options = [makeBlankOption()]
+  }
+
   return {
     title: d.title,
     decidedAtLocal: toLocalDateTimeString(d.decidedAt),
@@ -99,13 +120,19 @@ function decisionToForm(d: Decision): FormState {
     problemStatement: d.problemStatement,
     variables: d.variables,
     complications: d.complications,
-    alternatives: d.alternatives,
+    options,
+    migratedFromLegacy,
     rangeOfOutcomes: d.rangeOfOutcomes,
     expectedOutcome: d.expectedOutcome
   }
 }
 
 function formToInput(f: FormState): DecisionCreateInput {
+  const cleanedOptions = f.options
+    .map((o) => ({ ...o, name: o.name.trim(), note: o.note.trim() }))
+    .filter((o) => o.name !== '' || o.note !== '')
+  const alternatives = cleanedOptions.length > 0 ? serializeOptions(cleanedOptions) : ''
+
   return {
     title: f.title.trim(),
     decidedAt: fromLocalDateTime(f.decidedAtLocal),
@@ -115,7 +142,7 @@ function formToInput(f: FormState): DecisionCreateInput {
     problemStatement: f.problemStatement,
     variables: f.variables,
     complications: f.complications,
-    alternatives: f.alternatives,
+    alternatives,
     rangeOfOutcomes: f.rangeOfOutcomes,
     expectedOutcome: f.expectedOutcome
   }
@@ -188,12 +215,38 @@ export default function DecisionForm({ mode }: { mode: Mode }) {
       a.problemStatement !== form.problemStatement ||
       a.variables !== form.variables ||
       a.complications !== form.complications ||
-      a.alternatives !== form.alternatives ||
       a.rangeOfOutcomes !== form.rangeOfOutcomes ||
       a.expectedOutcome !== form.expectedOutcome ||
-      JSON.stringify(a.mentalState) !== JSON.stringify(form.mentalState)
+      JSON.stringify(a.mentalState) !== JSON.stringify(form.mentalState) ||
+      JSON.stringify(a.options) !== JSON.stringify(form.options)
     )
   }, [form])
+
+  const updateOption = useCallback(
+    (id: string, patchFields: Partial<Pick<DecisionOption, 'name' | 'note' | 'chosen'>>) => {
+      setForm((prev) => ({
+        ...prev,
+        options: prev.options.map((o) => {
+          if (o.id !== id) {
+            return patchFields.chosen === true ? { ...o, chosen: false } : o
+          }
+          return { ...o, ...patchFields }
+        })
+      }))
+    },
+    []
+  )
+
+  const addOption = useCallback(() => {
+    setForm((prev) => ({ ...prev, options: [...prev.options, makeBlankOption()] }))
+  }, [])
+
+  const removeOption = useCallback((id: string) => {
+    setForm((prev) => {
+      const next = prev.options.filter((o) => o.id !== id)
+      return { ...prev, options: next.length > 0 ? next : [makeBlankOption()] }
+    })
+  }, [])
 
   const titleValid = form.title.trim().length > 0
   const canGoNext = step === 1 ? titleValid : true
@@ -360,14 +413,15 @@ export default function DecisionForm({ mode }: { mode: Mode }) {
         {step === 4 && (
           <Card>
             <Field
-              label="Alternatives you seriously considered and did not choose"
-              hint="Name at least two. Why were they rejected?"
+              label="Options you considered"
+              hint="Name at least two. Mark the one you picked. Use the notes for why you rejected the others, or what drew you to the one you chose."
             >
-              <TextAreaField
-                value={form.alternatives}
-                onChange={(v) => patch('alternatives', v)}
-                rows={5}
-                autoFocus
+              <OptionsEditor
+                options={form.options}
+                migratedFromLegacy={form.migratedFromLegacy}
+                onUpdate={updateOption}
+                onAdd={addOption}
+                onRemove={removeOption}
               />
             </Field>
 
@@ -584,6 +638,165 @@ function TextAreaField({
       />
       <div className="absolute bottom-2 right-2">
         <MicButton onInsert={handleInsert} />
+      </div>
+    </div>
+  )
+}
+
+function OptionsEditor({
+  options,
+  migratedFromLegacy,
+  onUpdate,
+  onAdd,
+  onRemove
+}: {
+  options: DecisionOption[]
+  migratedFromLegacy: boolean
+  onUpdate: (
+    id: string,
+    patch: Partial<Pick<DecisionOption, 'name' | 'note' | 'chosen'>>
+  ) => void
+  onAdd: () => void
+  onRemove: (id: string) => void
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      {migratedFromLegacy && (
+        <div className="rounded-lg border border-dashed border-border bg-bg/60 px-3.5 py-2.5 text-[12px] leading-relaxed text-text-muted">
+          Your earlier free-text notes have been moved into the first option below. Edit them, split them up, or add more options.
+        </div>
+      )}
+
+      {options.map((opt, idx) => (
+        <OptionRow
+          key={opt.id}
+          option={opt}
+          index={idx}
+          canRemove={options.length > 1}
+          onUpdate={onUpdate}
+          onRemove={onRemove}
+        />
+      ))}
+
+      <button
+        type="button"
+        onClick={onAdd}
+        className="flex items-center justify-center gap-1.5 self-start rounded-lg border border-dashed border-border bg-bg/40 px-3 py-2 text-[12.5px] text-text-muted hover:border-text/30 hover:text-text"
+      >
+        <Plus size={13} strokeWidth={2} />
+        Add option
+      </button>
+    </div>
+  )
+}
+
+function OptionRow({
+  option,
+  index,
+  canRemove,
+  onUpdate,
+  onRemove
+}: {
+  option: DecisionOption
+  index: number
+  canRemove: boolean
+  onUpdate: (
+    id: string,
+    patch: Partial<Pick<DecisionOption, 'name' | 'note' | 'chosen'>>
+  ) => void
+  onRemove: (id: string) => void
+}) {
+  const noteRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    const el = noteRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.max(el.scrollHeight, 3 * 24)}px`
+  }, [option.note])
+
+  const handleNoteInsert = useCallback(
+    (text: string) => {
+      const el = noteRef.current
+      const v = option.note
+      if (el && el === document.activeElement) {
+        const start = el.selectionStart ?? v.length
+        const end = el.selectionEnd ?? v.length
+        onUpdate(option.id, { note: v.slice(0, start) + text + v.slice(end) })
+      } else {
+        onUpdate(option.id, { note: v ? v + '\n' + text : text })
+      }
+    },
+    [option.id, option.note, onUpdate]
+  )
+
+  return (
+    <div
+      className={[
+        'rounded-xl border bg-bg px-3.5 py-3 transition-colors',
+        option.chosen
+          ? 'border-[rgb(var(--accent))] dark:border-text'
+          : 'border-border'
+      ].join(' ')}
+    >
+      <div className="flex items-center gap-3">
+        <label className="flex shrink-0 cursor-pointer items-center gap-2">
+          <input
+            type="radio"
+            name="chosen-option"
+            checked={option.chosen}
+            onChange={() => onUpdate(option.id, { chosen: true })}
+            className="peer sr-only"
+          />
+          <span
+            className={[
+              'flex h-4 w-4 items-center justify-center rounded-full border transition-colors',
+              option.chosen
+                ? 'border-[rgb(var(--accent))] bg-[rgb(var(--accent))] dark:border-text dark:bg-text'
+                : 'border-border'
+            ].join(' ')}
+          >
+            {option.chosen && (
+              <span className="h-[6px] w-[6px] rounded-full bg-accent-text dark:bg-bg" />
+            )}
+          </span>
+          <span className="text-[11.5px] uppercase tracking-wide text-text-muted">
+            {option.chosen ? 'Chosen' : 'Pick'}
+          </span>
+        </label>
+
+        <input
+          type="text"
+          value={option.name}
+          onChange={(e) => onUpdate(option.id, { name: e.target.value })}
+          placeholder={`Option ${index + 1} name`}
+          className="h-8 min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 text-[13.5px] font-medium text-text placeholder:text-text-muted focus:border-border focus:outline-none"
+        />
+
+        {canRemove && (
+          <button
+            type="button"
+            onClick={() => onRemove(option.id)}
+            aria-label={`Remove option ${index + 1}`}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-muted hover:bg-nav-active hover:text-text"
+          >
+            <Trash2 size={13} strokeWidth={1.75} />
+          </button>
+        )}
+      </div>
+
+      <div className="relative mt-2">
+        <textarea
+          ref={noteRef}
+          value={option.note}
+          onChange={(e) => onUpdate(option.id, { note: e.target.value })}
+          rows={3}
+          placeholder="Notes — what was appealing, what was off, why you picked it or rejected it."
+          className="w-full resize-none rounded-lg border border-border bg-bg-elevated px-3 py-2.5 pr-10 text-[13px] leading-relaxed text-text placeholder:text-text-muted focus:border-text/40 focus:outline-none focus:ring-2 focus:ring-text/10"
+        />
+        <div className="absolute bottom-2 right-2">
+          <MicButton onInsert={handleNoteInsert} />
+        </div>
       </div>
     </div>
   )

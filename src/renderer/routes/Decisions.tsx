@@ -68,6 +68,19 @@ export default function Decisions() {
             <Plus size={15} strokeWidth={2} />
             New Decision
           </button>
+          <p className="mt-8 text-[12px] text-text-muted">
+            New to decision journals? Read{' '}
+            <button
+              type="button"
+              onClick={() =>
+                window.api.app.openExternal('https://fs.blog/decision-journal/')
+              }
+              className="underline underline-offset-2 hover:text-text"
+            >
+              Farnam Street's original piece
+            </button>{' '}
+            — the practice this app is built around.
+          </p>
         </div>
       ) : (
         <div className="mt-8 flex flex-col gap-3 pb-10">
