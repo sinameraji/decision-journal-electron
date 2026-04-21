@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Decision Journal — a private, offline journal for your decisions</title>
+    <meta
+      name="description"
+      content="An offline, encrypted macOS journal for the decisions you make — and the ones you want to get better at."
+    />
+    <meta property="og:title" content="Decision Journal" />
+    <meta
+      property="og:description"
+      content="A private, offline journal for the decisions you make — and the ones you want to get better at."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:video" content="dj.mp4" />
+    <meta name="theme-color" content="#F3ECD9" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#1F1B15" media="(prefers-color-scheme: dark)" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%93%3C/text%3E%3C/svg%3E" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT@0,9..144,300..700,30;1,9..144,300..700,30&family=Inter:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+
+    <style>
+      :root {
+        --bg: #f3ecd9;
+        --bg-elevated: #fbf7ec;
+        --border: #e3d9bf;
+        --text: #2a241c;
+        --text-muted: #7a6f5c;
+        --accent: #3a2f24;
+        --accent-text: #fbf7ec;
+        --nav-active: #e4d9bc;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #1f1b15;
+          --bg-elevated: #2a251c;
+          --border: #3a3327;
+          --text: #efe6d0;
+          --text-muted: #9a8f78;
+          --accent: #efe6d0;
+          --accent-text: #1f1b15;
+          --nav-active: #2e2820;
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: var(--bg);
+        color: var(--text);
+      }
+
+      body {
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+        font-feature-settings: 'cv11', 'ss01', 'ss03';
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        line-height: 1.55;
+        overflow-x: hidden;
+      }
+
+      .serif {
+        font-family: 'Fraunces', ui-serif, Georgia, serif;
+        font-optical-sizing: auto;
+        font-variation-settings: 'SOFT' 30, 'WONK' 0;
+        letter-spacing: -0.01em;
+      }
+
+      .wrap {
+        max-width: 920px;
+        margin: 0 auto;
+        padding: 0 24px;
+      }
+
+      header.site {
+        padding: 28px 0 8px;
+      }
+      header.site .wrap {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+      }
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 600;
+        color: var(--text);
+        text-decoration: none;
+      }
+      .brand-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--accent);
+        display: inline-block;
+      }
+      .nav {
+        display: flex;
+        gap: 18px;
+        font-size: 14px;
+      }
+      .nav a {
+        color: var(--text-muted);
+        text-decoration: none;
+      }
+      .nav a:hover {
+        color: var(--text);
+      }
+
+      .hero {
+        padding: 48px 0 16px;
+      }
+      .eyebrow {
+        font-size: 13px;
+        color: var(--text-muted);
+        letter-spacing: 0.02em;
+        margin-bottom: 16px;
+      }
+      h1.title {
+        font-size: clamp(40px, 6.5vw, 68px);
+        line-height: 1.05;
+        margin: 0 0 18px;
+        font-weight: 400;
+        letter-spacing: -0.02em;
+      }
+      h1.title em {
+        font-style: italic;
+        font-variation-settings: 'SOFT' 100, 'WONK' 1;
+        color: var(--text-muted);
+      }
+      p.lede {
+        font-size: clamp(17px, 2.1vw, 20px);
+        color: var(--text-muted);
+        max-width: 640px;
+        margin: 0 0 28px;
+      }
+
+      .cta-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 14px;
+        margin-bottom: 10px;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 20px;
+        border-radius: 10px;
+        font-weight: 500;
+        font-size: 15px;
+        text-decoration: none;
+        border: 1px solid transparent;
+        transition: transform 120ms ease, background-color 120ms ease, border-color 120ms ease;
+      }
+      .btn:active {
+        transform: translateY(1px);
+      }
+      .btn-primary {
+        background: var(--accent);
+        color: var(--accent-text);
+        border-color: var(--accent);
+      }
+      .btn-primary:hover {
+        background: var(--text);
+        border-color: var(--text);
+      }
+      .btn-ghost {
+        background: transparent;
+        color: var(--text);
+        border-color: var(--border);
+      }
+      .btn-ghost:hover {
+        background: var(--bg-elevated);
+      }
+      .apple {
+        width: 16px;
+        height: 16px;
+        flex: none;
+      }
+      .cta-meta {
+        font-size: 13px;
+        color: var(--text-muted);
+      }
+
+      .video-stage {
+        margin: 44px 0 64px;
+        position: relative;
+        border-radius: 18px;
+        overflow: hidden;
+        background: var(--bg-elevated);
+        box-shadow:
+          0 1px 2px rgba(0, 0, 0, 0.04),
+          0 20px 60px -20px rgba(58, 47, 36, 0.25),
+          0 0 0 1px var(--border);
+      }
+      @media (prefers-color-scheme: dark) {
+        .video-stage {
+          box-shadow:
+            0 1px 2px rgba(0, 0, 0, 0.2),
+            0 30px 80px -20px rgba(0, 0, 0, 0.6),
+            0 0 0 1px var(--border);
+        }
+      }
+      .video-stage video {
+        display: block;
+        width: 100%;
+        height: auto;
+        background: var(--bg-elevated);
+        /* Extra belt-and-braces: strip any native overlay */
+        outline: none;
+      }
+      .video-stage video::-webkit-media-controls,
+      .video-stage video::-webkit-media-controls-enclosure,
+      .video-stage video::-webkit-media-controls-panel,
+      .video-stage video::-webkit-media-controls-start-playback-button {
+        display: none !important;
+        -webkit-appearance: none;
+      }
+
+      section.features {
+        padding: 24px 0 56px;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 18px;
+      }
+      @media (max-width: 720px) {
+        section.features {
+          grid-template-columns: 1fr;
+        }
+      }
+      .card {
+        background: var(--bg-elevated);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 20px;
+      }
+      .card h3 {
+        margin: 0 0 6px;
+        font-size: 16px;
+        font-weight: 600;
+      }
+      .card p {
+        margin: 0;
+        font-size: 14px;
+        color: var(--text-muted);
+      }
+
+      .inspired {
+        padding: 8px 0 72px;
+        color: var(--text-muted);
+        font-size: 15px;
+        max-width: 680px;
+      }
+      .inspired a {
+        color: var(--text);
+        text-decoration: underline;
+        text-decoration-color: var(--border);
+        text-underline-offset: 3px;
+      }
+      .inspired a:hover {
+        text-decoration-color: var(--text-muted);
+      }
+
+      footer.site {
+        border-top: 1px solid var(--border);
+        padding: 24px 0 40px;
+        color: var(--text-muted);
+        font-size: 13px;
+      }
+      footer.site .wrap {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        justify-content: space-between;
+        align-items: center;
+      }
+      footer.site a {
+        color: var(--text-muted);
+        text-decoration: none;
+      }
+      footer.site a:hover {
+        color: var(--text);
+      }
+    </style>
+  </head>
+  <body>
+    <header class="site">
+      <div class="wrap">
+        <a class="brand" href="/">
+          <span class="brand-dot" aria-hidden="true"></span>
+          <span>Decision Journal</span>
+        </a>
+        <nav class="nav" aria-label="Primary">
+          <a href="https://github.com/sinameraji/decision-journal-electron">GitHub</a>
+          <a href="https://github.com/sinameraji/decision-journal-electron#readme">Docs</a>
+          <a href="https://github.com/sinameraji/decision-journal-electron/releases">Releases</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero wrap">
+        <div class="eyebrow">Offline · Encrypted · macOS</div>
+        <h1 class="title serif">
+          A private journal<br />for the decisions you make<br /><em>and the ones you want to get better at.</em>
+        </h1>
+        <p class="lede">
+          Capture a decision as you make it. Come back months later and log how it actually played out.
+          Slowly build a real picture of your own judgment — on your Mac, never in the cloud.
+        </p>
+        <div class="cta-row">
+          <a id="download" class="btn btn-primary" href="https://github.com/sinameraji/decision-journal-electron/releases/latest">
+            <svg class="apple" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M16.365 1.43c0 1.14-.465 2.23-1.21 3.02-.79.82-2.07 1.44-3.11 1.36-.12-1.1.44-2.27 1.16-3.02.8-.83 2.15-1.45 3.16-1.36ZM20.5 17.23c-.57 1.3-.84 1.88-1.58 3.03-1.03 1.6-2.48 3.6-4.28 3.62-1.6.01-2.01-1.04-4.18-1.03-2.17.01-2.62 1.05-4.22 1.04-1.8-.02-3.17-1.83-4.2-3.43C-.49 16.52-.3 10.9 2.51 7.9c1.03-1.1 2.55-1.8 3.98-1.8 1.66 0 2.7 1.05 4.08 1.05 1.34 0 2.16-1.05 4.08-1.05 1.27 0 2.62.55 3.58 1.5-3.14 1.72-2.63 6.2.27 7.63Z" />
+            </svg>
+            <span id="download-label">Download for Mac</span>
+          </a>
+          <a class="btn btn-ghost" href="https://github.com/sinameraji/decision-journal-electron">
+            View on GitHub
+          </a>
+        </div>
+        <div class="cta-meta" id="release-meta">Universal macOS binary · Intel + Apple Silicon · macOS 11+</div>
+      </section>
+
+      <section class="wrap">
+        <div class="video-stage">
+          <video
+            id="preview"
+            src="dj.mp4"
+            autoplay
+            muted
+            loop
+            playsinline
+            preload="metadata"
+            disablepictureinpicture
+            disableremoteplayback
+            controlslist="nodownload nofullscreen noremoteplayback noplaybackrate"
+            aria-label="Decision Journal preview"
+          ></video>
+        </div>
+      </section>
+
+      <section class="features wrap">
+        <div class="card">
+          <h3>Your journal stays on your Mac</h3>
+          <p>
+            No accounts. No cloud. A kill-switch in the main process blocks every outbound request by
+            default — your decisions never leave your machine.
+          </p>
+        </div>
+        <div class="card">
+          <h3>Encrypted at rest</h3>
+          <p>
+            A 256-bit key encrypts your database. Your PIN wraps that key via Argon2id, and the macOS
+            keychain wraps it again. Copy the file off your disk and it looks like random noise.
+          </p>
+        </div>
+        <div class="card">
+          <h3>Local AI, on your machine</h3>
+          <p>
+            Chat with a local Ollama model about past decisions. Dictate new ones with on-device Whisper.
+            No prompts, no audio, and no text ever leaves your Mac.
+          </p>
+        </div>
+      </section>
+
+      <section class="wrap inspired">
+        Inspired by
+        <a href="https://fs.blog/decision-journal/" rel="noopener">Farnam Street's decision journal practice</a> —
+        write down a decision as you're making it, come back to it months later, log how it actually played out,
+        and slowly build a real picture of your own judgment over time.
+      </section>
+    </main>
+
+    <footer class="site">
+      <div class="wrap">
+        <div>Built for macOS by <a href="https://github.com/sinameraji">Sina Meraji</a> · MIT licensed</div>
+        <div>
+          <a href="https://github.com/sinameraji/decision-journal-electron/issues">Report an issue</a>
+        </div>
+      </div>
+    </footer>
+
+    <script>
+      // Best-effort: fetch the latest release and point the Download button at the DMG directly.
+      // Falls back silently to /releases/latest if the API call fails or is rate-limited.
+      (async function () {
+        const btn = document.getElementById('download');
+        const label = document.getElementById('download-label');
+        const meta = document.getElementById('release-meta');
+        try {
+          const res = await fetch(
+            'https://api.github.com/repos/sinameraji/decision-journal-electron/releases/latest',
+            { headers: { Accept: 'application/vnd.github+json' } },
+          );
+          if (!res.ok) return;
+          const data = await res.json();
+          const dmg = (data.assets || []).find(
+            (a) => typeof a.name === 'string' && a.name.endsWith('.dmg') && !a.name.endsWith('.blockmap'),
+          );
+          if (dmg && dmg.browser_download_url) {
+            btn.href = dmg.browser_download_url;
+            const tag = (data.tag_name || '').replace(/^v/, '');
+            if (tag) label.textContent = 'Download for Mac · ' + tag;
+            if (dmg.size) {
+              const mb = Math.round(dmg.size / (1024 * 1024));
+              meta.textContent =
+                'Universal macOS binary · Intel + Apple Silicon · macOS 11+ · ' + mb + ' MB';
+            }
+          }
+        } catch (_) {
+          /* offline or rate-limited — keep the fallback href */
+        }
+      })();
+
+      // Keep autoplay smooth: if the browser blocks it, start on first interaction.
+      (function () {
+        const v = document.getElementById('preview');
+        if (!v) return;
+        const tryPlay = () => v.play().catch(() => {});
+        tryPlay();
+        const kick = () => {
+          tryPlay();
+          window.removeEventListener('pointerdown', kick);
+          window.removeEventListener('keydown', kick);
+        };
+        window.addEventListener('pointerdown', kick, { once: true });
+        window.addEventListener('keydown', kick, { once: true });
+      })();
+    </script>
+  </body>
+</html>
