@@ -36,6 +36,7 @@
         --accent: #3a2f24;
         --accent-text: #fbf7ec;
         --nav-active: #e4d9bc;
+        --ink: #1a1510;
       }
 
       @media (prefers-color-scheme: dark) {
@@ -48,6 +49,7 @@
           --accent: #efe6d0;
           --accent-text: #1f1b15;
           --nav-active: #2e2820;
+          --ink: #fbf7ec;
         }
       }
 
@@ -68,25 +70,39 @@
         font-feature-settings: 'cv11', 'ss01', 'ss03';
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
-        line-height: 1.55;
+        line-height: 1.6;
         overflow-x: hidden;
+      }
+
+      /* Subtle grain texture overlay */
+      body::before {
+        content: '';
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 9999;
+        opacity: 0.025;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+        background-repeat: repeat;
+        background-size: 128px 128px;
       }
 
       .serif {
         font-family: 'Fraunces', ui-serif, Georgia, serif;
         font-optical-sizing: auto;
         font-variation-settings: 'SOFT' 30, 'WONK' 0;
-        letter-spacing: -0.01em;
+        letter-spacing: -0.02em;
       }
 
       .wrap {
-        max-width: 920px;
+        max-width: 980px;
         margin: 0 auto;
-        padding: 0 24px;
+        padding: 0 28px;
       }
 
+      /* Header */
       header.site {
-        padding: 28px 0 8px;
+        padding: 32px 0 0;
       }
       header.site .wrap {
         display: flex;
@@ -101,42 +117,93 @@
         font-weight: 600;
         color: var(--text);
         text-decoration: none;
+        font-size: 15px;
+        letter-spacing: -0.01em;
       }
       .brand-dot {
-        width: 10px;
-        height: 10px;
+        width: 8px;
+        height: 8px;
         border-radius: 50%;
         background: var(--accent);
         display: inline-block;
+        position: relative;
+      }
+      .brand-dot::after {
+        content: '';
+        position: absolute;
+        inset: -3px;
+        border-radius: 50%;
+        border: 1px solid var(--border);
+        opacity: 0.6;
       }
       .nav {
         display: flex;
-        gap: 18px;
+        gap: 24px;
         font-size: 14px;
       }
       .nav a {
         color: var(--text-muted);
         text-decoration: none;
+        position: relative;
+        padding: 4px 0;
+      }
+      .nav a::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 0;
+        height: 1px;
+        background: var(--text);
+        transition: width 250ms ease;
       }
       .nav a:hover {
         color: var(--text);
       }
+      .nav a:hover::after {
+        width: 100%;
+      }
 
+      /* Hero */
       .hero {
-        padding: 48px 0 16px;
+        padding: 72px 0 16px;
+        position: relative;
+      }
+      .hero::before {
+        content: '';
+        position: absolute;
+        top: 40px;
+        right: -60px;
+        width: 280px;
+        height: 280px;
+        border-radius: 50%;
+        background: radial-gradient(circle, var(--border) 0%, transparent 70%);
+        opacity: 0.4;
+        pointer-events: none;
+      }
+      @media (max-width: 720px) {
+        .hero::before {
+          width: 180px;
+          height: 180px;
+          right: -40px;
+          top: 60px;
+        }
       }
       .eyebrow {
-        font-size: 13px;
+        font-size: 12px;
         color: var(--text-muted);
-        letter-spacing: 0.02em;
-        margin-bottom: 16px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        margin-bottom: 24px;
+        font-weight: 500;
       }
       h1.title {
-        font-size: clamp(40px, 6.5vw, 68px);
+        font-size: clamp(42px, 7vw, 76px);
         line-height: 1.05;
-        margin: 0 0 18px;
+        margin: 0 0 24px;
         font-weight: 400;
-        letter-spacing: -0.02em;
+        letter-spacing: -0.03em;
+        max-width: 800px;
       }
       h1.title em {
         font-style: italic;
@@ -144,10 +211,11 @@
         color: var(--text-muted);
       }
       p.lede {
-        font-size: clamp(17px, 2.1vw, 20px);
+        font-size: clamp(17px, 2.2vw, 21px);
         color: var(--text-muted);
-        max-width: 640px;
-        margin: 0 0 28px;
+        max-width: 560px;
+        margin: 0 0 32px;
+        line-height: 1.6;
       }
 
       .cta-row {
@@ -155,31 +223,52 @@
         flex-wrap: wrap;
         align-items: center;
         gap: 14px;
-        margin-bottom: 10px;
+        margin-bottom: 12px;
       }
       .btn {
         display: inline-flex;
         align-items: center;
         gap: 10px;
-        padding: 12px 20px;
+        padding: 13px 22px;
         border-radius: 10px;
         font-weight: 500;
         font-size: 15px;
         text-decoration: none;
         border: 1px solid transparent;
-        transition: transform 120ms ease, background-color 120ms ease, border-color 120ms ease;
+        transition: all 200ms ease;
+        position: relative;
+        overflow: hidden;
+      }
+      .btn::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(120deg, transparent 30%, rgba(255,255,255,0.1) 50%, transparent 70%);
+        transform: translateX(-100%);
+        transition: transform 500ms ease;
+      }
+      .btn:hover::before {
+        transform: translateX(100%);
       }
       .btn:active {
-        transform: translateY(1px);
+        transform: translateY(1px) scale(0.98);
       }
       .btn-primary {
         background: var(--accent);
         color: var(--accent-text);
         border-color: var(--accent);
+        box-shadow: 0 4px 14px -4px rgba(58, 47, 36, 0.3);
+      }
+      @media (prefers-color-scheme: dark) {
+        .btn-primary {
+          box-shadow: 0 4px 14px -4px rgba(0, 0, 0, 0.4);
+        }
       }
       .btn-primary:hover {
         background: var(--text);
         border-color: var(--text);
+        transform: translateY(-1px);
+        box-shadow: 0 8px 24px -6px rgba(58, 47, 36, 0.35);
       }
       .btn-ghost {
         background: transparent;
@@ -188,6 +277,8 @@
       }
       .btn-ghost:hover {
         background: var(--bg-elevated);
+        border-color: var(--text-muted);
+        transform: translateY(-1px);
       }
       .apple {
         width: 16px;
@@ -197,24 +288,33 @@
       .cta-meta {
         font-size: 13px;
         color: var(--text-muted);
+        margin-top: 4px;
       }
 
+      /* Video stage */
+      .video-section {
+        padding: 48px 0 0;
+      }
       .video-stage {
-        margin: 44px 0 64px;
         position: relative;
-        border-radius: 18px;
+        border-radius: 20px;
         overflow: hidden;
         background: var(--bg-elevated);
         box-shadow:
           0 1px 2px rgba(0, 0, 0, 0.04),
-          0 20px 60px -20px rgba(58, 47, 36, 0.25),
+          0 24px 64px -20px rgba(58, 47, 36, 0.22),
           0 0 0 1px var(--border);
+        transform: perspective(1200px) rotateX(2deg);
+        transition: transform 400ms ease;
+      }
+      .video-stage:hover {
+        transform: perspective(1200px) rotateX(0deg);
       }
       @media (prefers-color-scheme: dark) {
         .video-stage {
           box-shadow:
             0 1px 2px rgba(0, 0, 0, 0.2),
-            0 30px 80px -20px rgba(0, 0, 0, 0.6),
+            0 32px 80px -20px rgba(0, 0, 0, 0.55),
             0 0 0 1px var(--border);
         }
       }
@@ -223,7 +323,6 @@
         width: 100%;
         height: auto;
         background: var(--bg-elevated);
-        /* Extra belt-and-braces: strip any native overlay */
         outline: none;
       }
       .video-stage video::-webkit-media-controls,
@@ -234,69 +333,264 @@
         -webkit-appearance: none;
       }
 
-      section.features {
-        padding: 24px 0 56px;
+      /* Philosophy section */
+      .philosophy {
+        padding: 96px 0 48px;
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 18px;
+        grid-template-columns: 1fr 1fr;
+        gap: 64px;
+        align-items: start;
       }
       @media (max-width: 720px) {
-        section.features {
+        .philosophy {
+          grid-template-columns: 1fr;
+          gap: 40px;
+          padding: 64px 0 32px;
+        }
+      }
+      .philosophy-block h2 {
+        font-size: clamp(26px, 3.5vw, 34px);
+        font-weight: 400;
+        line-height: 1.2;
+        margin: 0 0 20px;
+        letter-spacing: -0.02em;
+      }
+      .philosophy-block p {
+        color: var(--text-muted);
+        font-size: 16px;
+        line-height: 1.7;
+        margin: 0 0 16px;
+      }
+      .philosophy-block p:last-child {
+        margin-bottom: 0;
+      }
+
+      /* Features - broken grid */
+      .features {
+        padding: 48px 0 80px;
+      }
+      .features-header {
+        margin-bottom: 48px;
+      }
+      .features-header h2 {
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--text-muted);
+        font-weight: 500;
+        margin: 0;
+      }
+      .feature-grid {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 20px;
+      }
+      @media (max-width: 720px) {
+        .feature-grid {
           grid-template-columns: 1fr;
         }
       }
-      .card {
+      .feature-card {
         background: var(--bg-elevated);
         border: 1px solid var(--border);
-        border-radius: 14px;
-        padding: 20px;
+        border-radius: 16px;
+        padding: 28px;
+        transition: transform 200ms ease, box-shadow 200ms ease;
       }
-      .card h3 {
-        margin: 0 0 6px;
-        font-size: 16px;
-        font-weight: 600;
+      .feature-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 12px 32px -12px rgba(58, 47, 36, 0.12);
       }
-      .card p {
-        margin: 0;
-        font-size: 14px;
+      @media (prefers-color-scheme: dark) {
+        .feature-card:hover {
+          box-shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.3);
+        }
+      }
+      .feature-card.wide {
+        grid-column: span 7;
+      }
+      .feature-card.tall {
+        grid-column: span 5;
+        grid-row: span 2;
+      }
+      .feature-card.narrow {
+        grid-column: span 5;
+      }
+      @media (max-width: 720px) {
+        .feature-card.wide,
+        .feature-card.tall,
+        .feature-card.narrow {
+          grid-column: span 1;
+          grid-row: span 1;
+        }
+      }
+      .feature-card .num {
+        font-family: 'Fraunces', serif;
+        font-size: 13px;
         color: var(--text-muted);
+        opacity: 0.6;
+        margin-bottom: 16px;
+        display: block;
+      }
+      .feature-card h3 {
+        margin: 0 0 10px;
+        font-size: 18px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+      .feature-card p {
+        margin: 0;
+        font-size: 14.5px;
+        color: var(--text-muted);
+        line-height: 1.65;
+      }
+      .feature-card .tag {
+        display: inline-block;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        padding: 4px 10px;
+        border-radius: 20px;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        color: var(--text-muted);
+        margin-top: 20px;
+        font-weight: 500;
       }
 
-      .inspired {
-        padding: 8px 0 72px;
-        color: var(--text-muted);
-        font-size: 15px;
-        max-width: 680px;
+      /* Quote */
+      .quote-section {
+        padding: 64px 0;
+        border-top: 1px solid var(--border);
+        border-bottom: 1px solid var(--border);
       }
-      .inspired a {
+      blockquote {
+        margin: 0;
+        padding: 0;
+      }
+      blockquote p {
+        font-family: 'Fraunces', serif;
+        font-size: clamp(22px, 3.5vw, 32px);
+        line-height: 1.4;
+        font-style: italic;
+        font-variation-settings: 'SOFT' 100, 'WONK' 1;
+        margin: 0 0 20px;
+        color: var(--text);
+        max-width: 720px;
+      }
+      blockquote cite {
+        font-style: normal;
+        font-size: 14px;
+        color: var(--text-muted);
+        font-family: Inter, sans-serif;
+      }
+      blockquote cite a {
         color: var(--text);
         text-decoration: underline;
         text-decoration-color: var(--border);
         text-underline-offset: 3px;
       }
-      .inspired a:hover {
+      blockquote cite a:hover {
         text-decoration-color: var(--text-muted);
       }
 
-      footer.site {
+      /* How it works */
+      .how-it-works {
+        padding: 80px 0 48px;
+      }
+      .how-it-works h2 {
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--text-muted);
+        font-weight: 500;
+        margin: 0 0 40px;
+      }
+      .steps {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+      }
+      .step {
+        display: grid;
+        grid-template-columns: 48px 1fr;
+        gap: 24px;
+        padding: 28px 0;
+        border-bottom: 1px solid var(--border);
+      }
+      .step:first-child {
         border-top: 1px solid var(--border);
-        padding: 24px 0 40px;
+      }
+      .step-num {
+        font-family: 'Fraunces', serif;
+        font-size: 24px;
+        font-weight: 400;
+        color: var(--text-muted);
+        opacity: 0.5;
+        line-height: 1;
+      }
+      .step-content h3 {
+        margin: 0 0 6px;
+        font-size: 17px;
+        font-weight: 600;
+      }
+      .step-content p {
+        margin: 0;
+        font-size: 15px;
+        color: var(--text-muted);
+        line-height: 1.6;
+      }
+
+      /* Footer */
+      footer.site {
+        padding: 40px 0 60px;
         color: var(--text-muted);
         font-size: 13px;
       }
       footer.site .wrap {
         display: flex;
         flex-wrap: wrap;
-        gap: 12px;
+        gap: 16px;
         justify-content: space-between;
         align-items: center;
       }
       footer.site a {
         color: var(--text-muted);
         text-decoration: none;
+        position: relative;
+      }
+      footer.site a::after {
+        content: '';
+        position: absolute;
+        bottom: -1px;
+        left: 0;
+        width: 0;
+        height: 1px;
+        background: var(--text-muted);
+        transition: width 200ms ease;
       }
       footer.site a:hover {
         color: var(--text);
+      }
+      footer.site a:hover::after {
+        width: 100%;
+      }
+
+      /* Scroll reveal */
+      .reveal {
+        opacity: 0;
+        transform: translateY(24px);
+        transition: opacity 600ms ease, transform 600ms ease;
+      }
+      .reveal.visible {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      /* Selection */
+      ::selection {
+        background: var(--accent);
+        color: var(--accent-text);
       }
     </style>
   </head>
@@ -339,8 +633,8 @@
         <div class="cta-meta" id="release-meta">Universal macOS binary · Intel + Apple Silicon · macOS 11+</div>
       </section>
 
-      <section class="wrap">
-        <div class="video-stage">
+      <section class="video-section wrap">
+        <div class="video-stage reveal">
           <video
             id="preview"
             src="dj.mp4"
@@ -357,35 +651,109 @@
         </div>
       </section>
 
-      <section class="features wrap">
-        <div class="card">
-          <h3>Your journal stays on your Mac</h3>
+      <section class="philosophy wrap">
+        <div class="philosophy-block reveal">
+          <h2 class="serif">Most people never review their decisions.</h2>
           <p>
-            No accounts. No cloud. A kill-switch in the main process blocks every outbound request by
-            default — your decisions never leave your machine.
+            We make hundreds of choices a day and forget them by dinner. The big ones fade into
+            vague memory — was that a good call? Did I learn anything?
+          </p>
+          <p>
+            A decision journal fixes that. Write down what you decided, why, and what you expect.
+            Months later, review it. The gap between your intuition and reality is where growth lives.
           </p>
         </div>
-        <div class="card">
-          <h3>Encrypted at rest</h3>
+        <div class="philosophy-block reveal">
+          <h2 class="serif">Built to stay private.</h2>
           <p>
-            A 256-bit key encrypts your database. Your PIN wraps that key via Argon2id, and the macOS
-            keychain wraps it again. Copy the file off your disk and it looks like random noise.
+            This isn't a web app with a login. It's a native Mac app that stores everything locally,
+            encrypts it, and blocks its own network access. Your data is yours. Full stop.
           </p>
-        </div>
-        <div class="card">
-          <h3>Local AI, on your machine</h3>
           <p>
-            Chat with a local Ollama model about past decisions. Dictate new ones with on-device Whisper.
-            No prompts, no audio, and no text ever leaves your Mac.
+            No subscription, no sync, no surveillance. Just a quiet place to think clearly and
+            honestly about how you make choices.
           </p>
         </div>
       </section>
 
-      <section class="wrap inspired">
-        Inspired by
-        <a href="https://fs.blog/decision-journal/" rel="noopener">Farnam Street's decision journal practice</a> —
-        write down a decision as you're making it, come back to it months later, log how it actually played out,
-        and slowly build a real picture of your own judgment over time.
+      <section class="features wrap">
+        <div class="features-header reveal">
+          <h2>What you get</h2>
+        </div>
+        <div class="feature-grid">
+          <div class="feature-card wide reveal">
+            <span class="num">01</span>
+            <h3>Your journal stays on your Mac</h3>
+            <p>
+              No accounts. No cloud. A kill-switch in the main process blocks every outbound request by
+              default — your decisions never leave your machine. Not even analytics.
+            </p>
+            <span class="tag">Zero network by default</span>
+          </div>
+          <div class="feature-card tall reveal">
+            <span class="num">02</span>
+            <h3>Encrypted at rest</h3>
+            <p>
+              A 256-bit key encrypts your database. Your PIN wraps that key via Argon2id, and the macOS
+              keychain wraps it again. Copy the file off your disk and it looks like random noise.
+            </p>
+            <span class="tag">Argon2id + Keychain</span>
+          </div>
+          <div class="feature-card narrow reveal">
+            <span class="num">03</span>
+            <h3>Local AI, on your machine</h3>
+            <p>
+              Chat with a local Ollama model about past decisions. Dictate new ones with on-device Whisper.
+              No prompts, no audio, and no text ever leaves your Mac.
+            </p>
+            <span class="tag">Ollama + Whisper</span>
+          </div>
+          <div class="feature-card wide reveal">
+            <span class="num">04</span>
+            <h3>Review reminders that actually work</h3>
+            <p>
+              Set a review date when you log a decision. The app reminds you when it's time to reflect.
+              Track your mental state, confidence, and outcomes over time. Spot your patterns.
+            </p>
+            <span class="tag">Scheduled reviews</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="quote-section wrap reveal">
+        <blockquote>
+          <p>"A decision journal helps you collect accurate and honest feedback on your decisions."</p>
+          <cite>
+            — <a href="https://fs.blog/decision-journal/" rel="noopener">Farnam Street</a>, on the practice of decision journaling
+          </cite>
+        </blockquote>
+      </section>
+
+      <section class="how-it-works wrap">
+        <h2 class="reveal">How it works</h2>
+        <div class="steps">
+          <div class="step reveal">
+            <div class="step-num">1</div>
+            <div class="step-content">
+              <h3>Log a decision</h3>
+              <p>What are you deciding? What's the context? What do you expect to happen? Capture it in the moment while it's fresh.</p>
+            </div>
+          </div>
+          <div class="step reveal">
+            <div class="step-num">2</div>
+            <div class="step-content">
+              <h3>Set a review date</h3>
+              <p>Pick a future date to revisit this decision. A month, a quarter, a year. The app will remind you.</p>
+            </div>
+          </div>
+          <div class="step reveal">
+            <div class="step-num">3</div>
+            <div class="step-content">
+              <h3>Review and learn</h3>
+              <p>When the time comes, log what actually happened. Compare your prediction to reality. Build a record of your judgment.</p>
+            </div>
+          </div>
+        </div>
       </section>
     </main>
 
@@ -400,7 +768,6 @@
 
     <script>
       // Best-effort: fetch the latest release and point the Download button at the DMG directly.
-      // Falls back silently to /releases/latest if the API call fails or is rate-limited.
       (async function () {
         const btn = document.getElementById('download');
         const label = document.getElementById('download-label');
@@ -430,7 +797,7 @@
         }
       })();
 
-      // Keep autoplay smooth: if the browser blocks it, start on first interaction.
+      // Keep autoplay smooth
       (function () {
         const v = document.getElementById('preview');
         if (!v) return;
@@ -443,6 +810,22 @@
         };
         window.addEventListener('pointerdown', kick, { once: true });
         window.addEventListener('keydown', kick, { once: true });
+      })();
+
+      // Scroll reveal
+      (function () {
+        const observer = new IntersectionObserver(
+          (entries) => {
+            entries.forEach((entry) => {
+              if (entry.isIntersecting) {
+                entry.target.classList.add('visible');
+                observer.unobserve(entry.target);
+              }
+            });
+          },
+          { threshold: 0.1, rootMargin: '0px 0px -40px 0px' },
+        );
+        document.querySelectorAll('.reveal').forEach((el) => observer.observe(el));
       })();
     </script>
   </body>
