@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.0](https://github.com/sinameraji/decision-journal-electron/compare/v0.5.0...v0.6.0) (2026-04-21)
+
+
+### Features
+
+* GitHub Pages landing page with demo video ([ab4fb9d](https://github.com/sinameraji/decision-journal-electron/commit/ab4fb9dfc7d3b292cf216d335253788011a38aa4))
+* GitHub Pages landing page with demo video and latest-DMG link ([2f14999](https://github.com/sinameraji/decision-journal-electron/commit/2f14999192f571e2e1d7f2ba907a5b0f25083fb0))
+
 ## [0.5.0](https://github.com/sinameraji/decision-journal-electron/compare/v0.4.7...v0.5.0) (2026-04-14)
 
 
