@@ -74,6 +74,8 @@ A second, separately authorized online feature. Enabling online chat does not en
 
 Rules when touching this: proposals are never auto-approved; no item is displayed without a verified source excerpt; backfill is always an explicit user-selected batch; and per-decision exclusion is checked both at enqueue and again at dispatch.
 
+**Extraction is zero-data-retention only, with no override.** Chat lets the user knowingly pick a model without a ZDR route, because they press send and see the disclosure each time. Extraction has no such moment — it runs by itself after every save — so a model without a ZDR provider is refused rather than offered. Do not add an escape hatch here to match chat's.
+
 ### State management
 
 Separate Zustand stores per concern in `src/renderer/store/`: `auth`, `theme`, `decisions`, `chat`, `memory`, `transcription`, `commandPalette`.

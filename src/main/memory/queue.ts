@@ -14,6 +14,7 @@ import { getDecision } from '../db/decisions'
 import { renderDecision } from '../ai/context'
 import { readOpenRouterKey } from '../ai/credentials'
 import { loadOnlineSettings } from '../ai/settings'
+import { getCachedCatalog } from '../ai/catalog'
 import { OpenRouterError, streamChatCompletion } from '../ai/openrouterClient'
 import {
   CONTRADICTION_NOTE,
@@ -209,6 +210,24 @@ async function runJob(db: Database.Database, job: ClaimedJob): Promise<JobOutcom
     return 'stop'
   }
 
+  // Extraction is ZDR-only, with no override. Chat lets the user knowingly
+  // accept a model without zero data retention, because they press send and see
+  // the disclosure each time. Extraction has no such moment: it runs by itself
+  // after every save. Accepting weaker retention for a background process is a
+  // different bargain from accepting it for one conversation, so it is refused
+  // rather than offered.
+  const catalog = await getCachedCatalog()
+  const model = catalog.models.find((m) => m.id === modelId)
+  if (model && !model.zdrAvailable) {
+    finishJob(
+      db,
+      job.id,
+      'error',
+      `${model.name} has no provider that enforces zero data retention. Memory extraction only runs on models that do — pick a different extraction model in Settings.`
+    )
+    return 'stop'
+  }
+
   const approved = listItems(db, ['approved'])
     .slice(0, MAX_CONTRADICTION_ITEMS)
     .map((i) => `- [${i.category}] ${i.statement}`)
@@ -237,7 +256,8 @@ async function runJob(db: Database.Database, job: ClaimedJob): Promise<JobOutcom
           { role: 'user', content: userContent }
         ],
         signal: controller.signal,
-        responseFormat: EXTRACTION_RESPONSE_FORMAT
+        responseFormat: EXTRACTION_RESPONSE_FORMAT,
+        enforceZdr: true
       },
       {
         onToken: (token) => {

@@ -176,7 +176,8 @@ async function main(): Promise<void> {
               'What did I choose, why did I reject quitting, what assumption should I test first, and what would make me reconsider?'
           }
         ],
-        signal: newSignal()
+        signal: newSignal(),
+        enforceZdr: true
       },
       {
         onToken: (t) => {
@@ -213,7 +214,8 @@ async function main(): Promise<void> {
           { role: 'system', content: built.systemPrompt },
           { role: 'user', content: 'Do you know my age or whether I am introverted? Answer directly.' }
         ],
-        signal: newSignal()
+        signal: newSignal(),
+        enforceZdr: true
       },
       {
         onToken: (t) => {
@@ -272,7 +274,8 @@ async function main(): Promise<void> {
           { role: 'user', content: 'Journal entry to extract from:\n\n' + renderDecision(decisionForValidation, 1) }
         ],
         signal: newSignal(),
-        responseFormat: EXTRACTION_RESPONSE_FORMAT
+        responseFormat: EXTRACTION_RESPONSE_FORMAT,
+        enforceZdr: true
       },
       {
         onToken: (t) => {
@@ -334,7 +337,8 @@ async function main(): Promise<void> {
             { role: 'system', content: built.systemPrompt },
             { role: 'user', content: 'What did I choose, and what is the single assumption I should test first?' }
           ],
-          signal: newSignal()
+          signal: newSignal(),
+          enforceZdr: true
         },
         { onToken: (t) => { out += t }, onDone: (_m, u) => { if (u?.costUsd) totalCost += u.costUsd } }
       )
@@ -367,7 +371,8 @@ async function main(): Promise<void> {
           { role: 'assistant', content: answer.slice(0, 1500) },
           { role: 'user', content: 'My available time just dropped from ten hours a week to five. How should the plan change?' }
         ],
-        signal: newSignal()
+        signal: newSignal(),
+        enforceZdr: true
       },
       { onToken: (t) => { followUp += t }, onDone: (_m, u) => { if (u?.costUsd) totalCost += u.costUsd } }
     )
@@ -388,7 +393,8 @@ async function main(): Promise<void> {
         apiKey: ['sk', 'or', 'v1', '0'.repeat(64)].join('-'),
         model: MODEL,
         messages: [{ role: 'user', content: 'hi' }],
-        signal: newSignal()
+        signal: newSignal(),
+        enforceZdr: true
       },
       { onToken: () => {}, onDone: () => {} }
     )
