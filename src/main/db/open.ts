@@ -239,6 +239,56 @@ const MIGRATIONS: Migration[] = [
     version: 7,
     sql: `ALTER TABLE conversations ADD COLUMN lens TEXT;`
   }
+,
+  {
+    // Optional role models. Everything about a real person is stored with the
+    // citation that supports it; a claim with no source is not stored at all.
+    version: 8,
+    sql: `
+      CREATE TABLE IF NOT EXISTS role_models (
+        id            TEXT PRIMARY KEY,
+        query         TEXT NOT NULL,
+        name          TEXT,
+        distinguisher TEXT,
+        lifespan      TEXT,
+        status        TEXT NOT NULL,
+        summary       TEXT,
+        sentiment     TEXT,
+        candidates    TEXT NOT NULL DEFAULT '[]',
+        rounds        INTEGER NOT NULL DEFAULT 0,
+        last_error    TEXT,
+        created_at    INTEGER NOT NULL,
+        updated_at    INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_role_models_updated ON role_models(updated_at DESC);
+
+      CREATE TABLE IF NOT EXISTS role_model_claims (
+        id            TEXT PRIMARY KEY,
+        role_model_id TEXT NOT NULL REFERENCES role_models(id) ON DELETE CASCADE,
+        section       TEXT NOT NULL,
+        text          TEXT NOT NULL,
+        source_url    TEXT NOT NULL,
+        source_title  TEXT,
+        created_at    INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_role_model_claims_owner
+        ON role_model_claims(role_model_id, section);
+
+      CREATE TABLE IF NOT EXISTS role_model_frameworks (
+        id            TEXT PRIMARY KEY,
+        role_model_id TEXT NOT NULL REFERENCES role_models(id) ON DELETE CASCADE,
+        name          TEXT NOT NULL,
+        summary       TEXT NOT NULL,
+        instruction   TEXT NOT NULL,
+        source_url    TEXT,
+        source_title  TEXT,
+        enabled       INTEGER NOT NULL DEFAULT 1,
+        created_at    INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_role_model_frameworks_owner
+        ON role_model_frameworks(role_model_id);
+    `
+  }
 ]
 
 function runMigrations(db: DB): void {
@@ -319,6 +369,31 @@ const REQUIRED_TABLES: { name: string; sql: string }[] = [
       consent_generation INTEGER NOT NULL, state TEXT NOT NULL,
       attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT,
       created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`
+  },
+  {
+    name: 'role_models',
+    sql: `CREATE TABLE IF NOT EXISTS role_models (
+      id TEXT PRIMARY KEY, query TEXT NOT NULL, name TEXT, distinguisher TEXT,
+      lifespan TEXT, status TEXT NOT NULL, summary TEXT, sentiment TEXT,
+      candidates TEXT NOT NULL DEFAULT '[]', rounds INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`
+  },
+  {
+    name: 'role_model_claims',
+    sql: `CREATE TABLE IF NOT EXISTS role_model_claims (
+      id TEXT PRIMARY KEY,
+      role_model_id TEXT NOT NULL REFERENCES role_models(id) ON DELETE CASCADE,
+      section TEXT NOT NULL, text TEXT NOT NULL, source_url TEXT NOT NULL,
+      source_title TEXT, created_at INTEGER NOT NULL)`
+  },
+  {
+    name: 'role_model_frameworks',
+    sql: `CREATE TABLE IF NOT EXISTS role_model_frameworks (
+      id TEXT PRIMARY KEY,
+      role_model_id TEXT NOT NULL REFERENCES role_models(id) ON DELETE CASCADE,
+      name TEXT NOT NULL, summary TEXT NOT NULL, instruction TEXT NOT NULL,
+      source_url TEXT, source_title TEXT, enabled INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER NOT NULL)`
   },
   {
     name: 'memory_suppressions',

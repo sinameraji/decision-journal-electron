@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { AlertTriangle, Globe, Loader2, X } from 'lucide-react'
 import type { AiProvider, PayloadPreview } from '@shared/ai'
-import { LENS_LABELS, type LensKind } from '@shared/ipc-contract'
+import type { LensSelection } from '@shared/ai'
 
 interface Props {
   provider: AiProvider
@@ -9,7 +9,7 @@ interface Props {
   conversationId: string | null
   attachments: string[]
   includeMemories: boolean
-  lens: LensKind | null
+  lens: LensSelection | null
   pendingText: string
   /** Null when opened as a plain preview rather than as the consent gate. */
   onConfirm: (() => void) | null
@@ -128,9 +128,9 @@ export default function SendReviewModal({
                 )}
               </Stat>
 
-              {preview.lens && (
-                <Stat label="Lens">
-                  {LENS_LABELS[preview.lens]} — its instruction is added to the coach's prompt.
+              {preview.lensLabel && (
+                <Stat label="Frame">
+                  {preview.lensLabel} — its instruction is added to the coach’s prompt.
                 </Stat>
               )}
 

@@ -1,6 +1,8 @@
 import { create } from 'zustand'
+import type { BorrowedFramework } from '@shared/roleModels'
 import type {
   AiEvent,
+  LensSelection,
   AiErrorCode,
   AiProvider,
   OnlineModel,
@@ -8,7 +10,7 @@ import type {
   StoredChatMessage
 } from '@shared/ai'
 import { DEFAULT_ONLINE_MODEL } from '@shared/ai'
-import type { LensKind } from '@shared/ipc-contract'
+
 import type {
   CatalogModel,
   ConversationSummary,
@@ -89,12 +91,14 @@ interface ChatState {
   includeMemories: boolean
   /** True when there is at least one approved memory to send. */
   memoryAvailable: boolean
+  /** Frameworks borrowed from role models, offered beside the built-in lenses. */
+  borrowedFrameworks: BorrowedFramework[]
   /**
    * Analytical frame for this conversation. Applied as a system instruction
    * rather than pasted into the user's message, so the payload preview and the
    * online consent gate keep telling the truth about what is sent.
    */
-  lens: LensKind | null
+  lens: LensSelection | null
 
   init: () => Promise<void>
   refresh: () => Promise<void>
@@ -104,10 +108,11 @@ interface ChatState {
   selectModel: (provider: AiProvider, modelId: string) => void
   setAttachments: (ids: string[]) => Promise<void>
   setIncludeMemories: (include: boolean) => void
-  setLens: (lens: LensKind | null) => void
-  /** Starts a fresh thread running one lens over one decision. */
-  startLens: (lens: LensKind, decisionId: string) => void
+  setLens: (lens: LensSelection | null) => void
+  /** Starts a fresh thread running one frame over one decision. */
+  startLens: (lens: LensSelection, decisionId: string) => void
   refreshMemoryAvailability: () => Promise<void>
+  refreshBorrowedFrameworks: () => Promise<void>
   confirmOnlineConsent: () => void
   startPull: (modelId: string) => Promise<void>
   cancelPull: (modelId: string) => Promise<void>
@@ -284,6 +289,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   onlineConsentConfirmed: false,
   includeMemories: false,
   memoryAvailable: false,
+  borrowedFrameworks: [],
   lens: null,
   sending: false,
 
@@ -298,6 +304,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     // Arriving at Chat is never "browsing the picker" — re-evaluate freely.
     set({ setupPinned: false })
     await get().refreshMemoryAvailability()
+    await get().refreshBorrowedFrameworks()
     // Sequential, not parallel: refresh() decides which provider to land on and
     // needs the online settings that refreshOnline() fetches. Running them
     // together raced, and refresh() often read `online` as null.
@@ -319,6 +326,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }))
     } catch {
       set({ memoryAvailable: false })
+    }
+  },
+
+  refreshBorrowedFrameworks: async () => {
+    try {
+      set({ borrowedFrameworks: await window.api.roleModels.frameworks() })
+    } catch {
+      set({ borrowedFrameworks: [] })
     }
   },
 
@@ -600,6 +615,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       onlineConsentConfirmed: false,
       includeMemories: false,
       memoryAvailable: false,
+      borrowedFrameworks: [],
       lens: null
     })
   },
