@@ -17,13 +17,16 @@ export interface OnlineSettingsFile {
   defaultModel: string
   consentGeneration: number
   catalogFetchedAt: number | null
+  /** Models the user accepted without zero-data-retention routing. */
+  acknowledgedNonZdrModels: string[]
 }
 
 const DEFAULTS: OnlineSettingsFile = {
   enabled: false,
   defaultModel: DEFAULT_ONLINE_MODEL,
   consentGeneration: 1,
-  catalogFetchedAt: null
+  catalogFetchedAt: null,
+  acknowledgedNonZdrModels: []
 }
 
 function settingsPath(): string {
@@ -48,7 +51,10 @@ export async function loadOnlineSettings(): Promise<OnlineSettingsFile> {
           ? parsed.consentGeneration
           : DEFAULTS.consentGeneration,
       catalogFetchedAt:
-        typeof parsed.catalogFetchedAt === 'number' ? parsed.catalogFetchedAt : null
+        typeof parsed.catalogFetchedAt === 'number' ? parsed.catalogFetchedAt : null,
+      acknowledgedNonZdrModels: Array.isArray(parsed.acknowledgedNonZdrModels)
+        ? parsed.acknowledgedNonZdrModels.filter((m): m is string => typeof m === 'string')
+        : []
     }
   } catch {
     cache = { ...DEFAULTS }
@@ -76,10 +82,12 @@ export async function saveOnlineSettings(
  */
 export async function revokeOnlineConsent(): Promise<OnlineSettingsFile> {
   const current = await loadOnlineSettings()
+  // Acknowledgements are consent too, and consent is being revoked.
   return saveOnlineSettings({
     enabled: false,
     consentGeneration: current.consentGeneration + 1,
-    catalogFetchedAt: null
+    catalogFetchedAt: null,
+    acknowledgedNonZdrModels: []
   })
 }
 

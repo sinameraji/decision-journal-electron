@@ -18,6 +18,9 @@ import type {
 
 export type Stage = 'loading' | 'setup' | 'chat'
 
+/** Which panel the picker is showing. Starts on the two-option chooser. */
+export type SetupView = 'chooser' | 'local' | 'online'
+
 interface PullState {
   requestId: string
   modelId: string
@@ -32,6 +35,8 @@ interface StreamingState {
   partial: string
   error: string | null
   errorCode: AiErrorCode | null
+  /** Set while waiting between retry attempts, so the delay is explained. */
+  retry: { attempt: number; maxAttempts: number; waitMs: number; reason: string } | null
 }
 
 /** A message being rendered. Persisted messages carry an id; the optimistic
@@ -48,6 +53,14 @@ interface ChatState {
   activeModel: string | null
   online: OnlineSettings | null
   onlineCatalog: OnlineModel[]
+  setupView: SetupView
+  /**
+   * True only while the user is deliberately browsing the picker. Without this
+   * the picker was sticky: once shown, `refresh()` kept returning to it even
+   * after a provider became usable, so enabling online AI in Settings and
+   * coming back to Chat still landed on the picker.
+   */
+  setupPinned: boolean
 
   messages: DisplayMessage[]
   streaming: StreamingState | null
@@ -59,11 +72,14 @@ interface ChatState {
   attachments: string[]
   /** True once the user reviewed the disclosure for the current online thread. */
   onlineConsentConfirmed: boolean
+  /** Between pressing send and the main process accepting the request. */
+  sending: boolean
 
   init: () => Promise<void>
   refresh: () => Promise<void>
   refreshOnline: () => Promise<void>
   openModelSetup: () => void
+  setSetupView: (view: SetupView) => void
   selectModel: (provider: AiProvider, modelId: string) => void
   setAttachments: (ids: string[]) => Promise<void>
   confirmOnlineConsent: () => void
@@ -71,6 +87,8 @@ interface ChatState {
   cancelPull: (modelId: string) => Promise<void>
   removeModel: (modelId: string) => Promise<void>
   sendMessage: (text: string) => Promise<void>
+  /** Re-sends the last user turn after a failure, without duplicating it. */
+  retryLast: () => Promise<void>
   stopStreaming: () => Promise<void>
   clearConversation: () => void
   reset: () => void
@@ -125,7 +143,28 @@ function dispatchAiEvent(evt: AiEvent): void {
 
   if (evt.type === 'token') {
     useChatStore.setState((s) =>
-      s.streaming ? { streaming: { ...s.streaming, partial: s.streaming.partial + evt.token } } : s
+      s.streaming
+        ? { streaming: { ...s.streaming, partial: s.streaming.partial + evt.token, retry: null } }
+        : s
+    )
+    return
+  }
+
+  if (evt.type === 'retry') {
+    useChatStore.setState((s) =>
+      s.streaming
+        ? {
+            streaming: {
+              ...s.streaming,
+              retry: {
+                attempt: evt.attempt,
+                maxAttempts: evt.maxAttempts,
+                waitMs: evt.waitMs,
+                reason: evt.reason
+              }
+            }
+          }
+        : s
     )
     return
   }
@@ -172,7 +211,13 @@ function dispatchAiEvent(evt: AiEvent): void {
         : s.messages
       return {
         messages,
-        streaming: { requestId: evt.requestId, partial: '', error: evt.message, errorCode: evt.code }
+        streaming: {
+          requestId: evt.requestId,
+          partial: '',
+          error: evt.message,
+          errorCode: evt.code,
+          retry: null
+        }
       }
     })
   }
@@ -201,6 +246,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   activeModel: null,
   online: null,
   onlineCatalog: [],
+  setupView: 'chooser',
+  setupPinned: false,
   messages: [],
   streaming: null,
   pulls: {},
@@ -209,6 +256,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   conversationList: [],
   attachments: [],
   onlineConsentConfirmed: false,
+  sending: false,
 
   init: async () => {
     if (!get().initialized) {
@@ -218,7 +266,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
       aiDisposer = window.api.ai.onEvent(dispatchAiEvent)
       set({ initialized: true })
     }
-    await Promise.all([get().refreshOnline(), get().refresh()])
+    // Arriving at Chat is never "browsing the picker" — re-evaluate freely.
+    set({ setupPinned: false })
+    // Sequential, not parallel: refresh() decides which provider to land on and
+    // needs the online settings that refreshOnline() fetches. Running them
+    // together raced, and refresh() often read `online` as null.
+    await get().refreshOnline()
+    await get().refresh()
   },
 
   refreshOnline: async () => {
@@ -253,7 +307,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
     }
 
-    const { provider, activeModel, stage: prevStage, online } = get()
+    const { provider, activeModel, online, setupPinned } = get()
 
     // Keep the current selection if it is still valid; otherwise fall back to
     // whichever provider is actually usable. Online availability no longer
@@ -271,12 +325,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
 
     const ready = readyForChat({ provider: nextProvider, activeModel: nextModel, online })
-    const stage: Stage = prevStage === 'setup' ? 'setup' : ready ? 'chat' : 'setup'
+    const stage: Stage = setupPinned ? 'setup' : ready ? 'chat' : 'setup'
 
     set({ status, catalog, installed, provider: nextProvider, activeModel: nextModel, stage })
   },
 
-  openModelSetup: () => set({ stage: 'setup' }),
+  openModelSetup: () => set({ stage: 'setup', setupView: 'chooser', setupPinned: true }),
+
+  setSetupView: (view) => set({ setupView: view }),
 
   selectModel: (provider, modelId) => {
     set({
@@ -354,34 +410,66 @@ export const useChatStore = create<ChatState>((set, get) => ({
       provider: null,
       modelId: null
     }
-    set((s) => ({ messages: [...s.messages, optimistic] }))
+    set((s) => ({ messages: [...s.messages, optimistic], sending: true }))
 
-    const result = await window.api.ai.send({
-      conversationId: activeConversationId,
-      provider,
-      modelId: activeModel,
-      text: trimmed,
-      attachments: { decisionIds: attachments },
-      onlineConsentConfirmed: provider === 'ollama' ? true : onlineConsentConfirmed
-    })
+    let result: Awaited<ReturnType<typeof window.api.ai.send>>
+    try {
+      result = await window.api.ai.send({
+        conversationId: activeConversationId,
+        provider,
+        modelId: activeModel,
+        text: trimmed,
+        attachments: { decisionIds: attachments },
+        onlineConsentConfirmed: provider === 'ollama' ? true : onlineConsentConfirmed
+      })
+    } catch (err) {
+      // Belt and braces. A rejected invoke() previously left the chat showing a
+      // sent message with no indicator and no error — indistinguishable from a
+      // hung request.
+      result = {
+        ok: false,
+        code: 'internal',
+        message: err instanceof Error ? err.message : 'The request could not be sent.'
+      }
+    }
 
     if (!result.ok) {
-      set((s) => ({
-        messages: s.messages.slice(0, -1),
+      // Keep the failed turn on screen rather than yanking it away.
+      set({
+        sending: false,
         streaming: {
           requestId: 'failed',
           partial: '',
           error: result.message,
-          errorCode: result.code
+          errorCode: result.code,
+          retry: null
         }
-      }))
+      })
       return
     }
 
     set({
+      sending: false,
       activeConversationId: result.conversationId,
-      streaming: { requestId: result.requestId, partial: '', error: null, errorCode: null }
+      streaming: {
+        requestId: result.requestId,
+        partial: '',
+        error: null,
+        errorCode: null,
+        retry: null
+      }
     })
+  },
+
+  retryLast: async () => {
+    const { messages, streaming } = get()
+    if (streaming && !streaming.error) return
+    // Find the last user turn and resend it. The failed assistant turn, if any,
+    // was already persisted with an error status by the main process.
+    const lastUser = [...messages].reverse().find((m) => m.role === 'user')
+    if (!lastUser) return
+    set({ streaming: null, messages: messages.filter((m) => m !== lastUser) })
+    await get().sendMessage(lastUser.content)
   },
 
   stopStreaming: async () => {
@@ -396,7 +484,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streaming: null,
       activeConversationId: null,
       attachments: [],
-      onlineConsentConfirmed: false
+      onlineConsentConfirmed: false,
+      sending: false
     })
     void get().loadConversationList()
   },
@@ -415,6 +504,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       activeModel: null,
       online: null,
       onlineCatalog: [],
+      setupView: 'chooser',
+      setupPinned: false,
       messages: [],
       streaming: null,
       pulls: {},

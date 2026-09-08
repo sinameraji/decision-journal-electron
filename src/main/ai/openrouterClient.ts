@@ -5,6 +5,7 @@
  */
 
 import type { AiUsage, OnlineModel } from '@shared/ai'
+import { RETRY_BACKOFF_MS } from '@shared/ai'
 import { asNetworkError, errorForStatus, OpenRouterError } from './errors'
 import { isAllowedOpenRouterUrl, onlineSession, OPENROUTER_API_PREFIX } from './network'
 import { isDoneSentinel, SseParser } from './sse'
@@ -52,6 +53,8 @@ interface RawModel {
 interface RawZdrEndpoint {
   model_id?: string
   model_name?: string
+  provider_name?: string
+  tag?: string
   context_length?: number
   pricing?: { prompt?: string; completion?: string }
   supported_parameters?: string[]
@@ -66,9 +69,12 @@ function perMillion(value: string | undefined): number | null {
 
 /**
  * Fetches the model catalog and the zero-data-retention endpoint list, and
- * returns only the models that have at least one ZDR route. Requests carrying
- * journal content are pinned to ZDR routing, so a model without one would only
- * ever produce a dead end for the user.
+ * returns every model flagged with whether it has a ZDR route and how many.
+ *
+ * Non-ZDR models used to be filtered out entirely. Hiding them made the
+ * constraint invisible: a user could not tell whether a model was missing
+ * because it does not exist or because it fails our privacy bar. They are now
+ * returned and marked, and selecting one requires explicit acknowledgement.
  */
 export async function fetchOnlineCatalog(apiKey: string | null): Promise<OnlineModel[]> {
   const [modelsRes, zdrRes] = await Promise.all([
@@ -92,7 +98,7 @@ export async function fetchOnlineCatalog(apiKey: string | null): Promise<OnlineM
 
   // A model can have several ZDR endpoints; keep the cheapest prompt price and
   // the union of structured-output support.
-  const zdr = new Map<string, { model: OnlineModel }>()
+  const zdr = new Map<string, { model: OnlineModel; providers: Set<string> }>()
   for (const e of zdrBody.data ?? []) {
     if (!e.model_id) continue
     const prompt = perMillion(e.pricing?.prompt)
@@ -101,6 +107,7 @@ export async function fetchOnlineCatalog(apiKey: string | null): Promise<OnlineM
     const existing = zdr.get(e.model_id)
     if (!existing) {
       zdr.set(e.model_id, {
+        providers: new Set(e.tag ? [e.tag] : []),
         model: {
           id: e.model_id,
           name: e.model_name ?? e.model_id,
@@ -108,11 +115,14 @@ export async function fetchOnlineCatalog(apiKey: string | null): Promise<OnlineM
           promptUsdPerMillion: prompt,
           completionUsdPerMillion: completion,
           supportsStructuredOutputs: structured,
-          zdrAvailable: true
+          zdrAvailable: true,
+          zdrProviderCount: e.tag ? 1 : 0,
+          zdrProviders: e.tag ? [e.tag] : []
         }
       })
       continue
     }
+    if (e.tag) existing.providers.add(e.tag)
     const m = existing.model
     if (prompt !== null && (m.promptUsdPerMillion === null || prompt < m.promptUsdPerMillion)) {
       m.promptUsdPerMillion = prompt
@@ -122,21 +132,49 @@ export async function fetchOnlineCatalog(apiKey: string | null): Promise<OnlineM
     m.contextLength = Math.max(m.contextLength, e.context_length ?? 0)
   }
 
-  // Prefer the canonical /models entry for display name and context length.
+  const out: OnlineModel[] = []
+  const seen = new Set<string>()
+
   for (const m of modelsBody.data ?? []) {
     if (!m.id) continue
+    seen.add(m.id)
     const entry = zdr.get(m.id)
-    if (!entry) continue
-    entry.model.name = m.name ?? entry.model.name
-    if (m.context_length) entry.model.contextLength = m.context_length
-    entry.model.supportsStructuredOutputs =
-      entry.model.supportsStructuredOutputs ||
-      (m.supported_parameters ?? []).includes('structured_outputs')
+    if (entry) {
+      entry.model.name = m.name ?? entry.model.name
+      if (m.context_length) entry.model.contextLength = m.context_length
+      entry.model.supportsStructuredOutputs =
+        entry.model.supportsStructuredOutputs ||
+        (m.supported_parameters ?? []).includes('structured_outputs')
+      entry.model.zdrProviders = [...entry.providers].sort()
+      entry.model.zdrProviderCount = entry.providers.size
+      out.push(entry.model)
+      continue
+    }
+    out.push({
+      id: m.id,
+      name: m.name ?? m.id,
+      contextLength: m.context_length ?? 0,
+      promptUsdPerMillion: perMillion(m.pricing?.prompt),
+      completionUsdPerMillion: perMillion(m.pricing?.completion),
+      supportsStructuredOutputs: (m.supported_parameters ?? []).includes('structured_outputs'),
+      zdrAvailable: false,
+      zdrProviderCount: 0,
+      zdrProviders: []
+    })
   }
 
-  return [...zdr.values()]
-    .map((e) => e.model)
-    .sort((a, b) => a.name.localeCompare(b.name))
+  // ZDR-only entries the /models list did not include.
+  for (const [id, entry] of zdr) {
+    if (seen.has(id)) continue
+    entry.model.zdrProviders = [...entry.providers].sort()
+    entry.model.zdrProviderCount = entry.providers.size
+    out.push(entry.model)
+  }
+
+  return out.sort((a, b) => {
+    if (a.zdrAvailable !== b.zdrAvailable) return a.zdrAvailable ? -1 : 1
+    return a.name.localeCompare(b.name)
+  })
 }
 
 // ---------------- Chat completions ----------------
@@ -158,6 +196,13 @@ export interface ChatRequest {
   signal: AbortSignal
   /** JSON-schema structured output. Adds `require_parameters` routing. */
   responseFormat?: unknown
+  /**
+   * Restrict routing to zero-data-retention providers. True unless the user has
+   * explicitly accepted this model without one.
+   */
+  enforceZdr: boolean
+  /** Reports each wait before a retry, so the UI can explain the delay. */
+  onRetry?: (info: { attempt: number; maxAttempts: number; waitMs: number; reason: string }) => void
 }
 
 /**
@@ -167,8 +212,16 @@ export interface ChatRequest {
  * route satisfies both, the request fails — it is never retried with these
  * relaxed.
  */
-function providerRouting(requireParameters: boolean): Record<string, unknown> {
-  const routing: Record<string, unknown> = { zdr: true, data_collection: 'deny' }
+function providerRouting(
+  requireParameters: boolean,
+  enforceZdr: boolean
+): Record<string, unknown> {
+  // When the user has explicitly accepted a model with no ZDR route, sending
+  // zdr:true would just fail every time. data_collection stays 'deny' either
+  // way: refusing training on inputs is available far more widely than ZDR.
+  const routing: Record<string, unknown> = enforceZdr
+    ? { zdr: true, data_collection: 'deny' }
+    : { data_collection: 'deny' }
   // Only demand exact parameter support when we actually depend on a parameter.
   // Several ZDR routes advertise `max_completion_tokens` rather than
   // `max_tokens`, so a blanket requirement would exclude them.
@@ -176,7 +229,76 @@ function providerRouting(requireParameters: boolean): Record<string, unknown> {
   return routing
 }
 
+/**
+ * Transient upstream conditions worth another attempt. 404 is included only
+ * when the body says no compliant route was found: with ZDR enforced that
+ * usually means every private provider is momentarily busy, not that the model
+ * does not exist.
+ */
+const RETRYABLE_STATUS = new Set([429, 502, 503, 504])
+const MAX_ATTEMPTS = RETRY_BACKOFF_MS.length + 1
+
+/**
+ * Retrying is only safe before any token has been emitted. A 429 or 502 arrives
+ * before generation starts, so nothing was produced and nothing was billed —
+ * unlike a mid-stream failure, where a retry would duplicate a paid completion.
+ */
 export async function streamChatCompletion(
+  req: ChatRequest,
+  cb: StreamCallbacks
+): Promise<void> {
+  let lastError: unknown
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      return await attemptStreamChatCompletion(req, cb)
+    } catch (err) {
+      lastError = err
+      if (!(err instanceof PreStreamHttpError) || req.signal.aborted) break
+      const noPrivateRoute = err.toOpenRouterError().code === 'no-private-route'
+      const retryable = RETRYABLE_STATUS.has(err.status) || noPrivateRoute
+      if (!retryable || attempt === MAX_ATTEMPTS) break
+
+      const wait = err.retryAfterMs ?? RETRY_BACKOFF_MS[attempt - 1]
+      req.onRetry?.({
+        attempt,
+        maxAttempts: MAX_ATTEMPTS,
+        waitMs: wait,
+        reason: noPrivateRoute
+          ? 'Waiting for an OpenRouter provider that enforces zero data retention'
+          : 'The model provider is busy'
+      })
+      await new Promise((r) => setTimeout(r, wait))
+    }
+  }
+  if (lastError instanceof PreStreamHttpError) throw lastError.toOpenRouterError()
+  throw lastError
+}
+
+/** Carries the status so the retry loop can decide, without losing the mapping. */
+class PreStreamHttpError extends Error {
+  constructor(
+    readonly status: number,
+    readonly body: string,
+    readonly retryAfterMs: number | null
+  ) {
+    super(`HTTP ${status}`)
+  }
+  toOpenRouterError(): OpenRouterError {
+    return errorForStatus(this.status, this.body)
+  }
+}
+
+function retryAfterMs(res: Response): number | null {
+  const raw = res.headers.get('retry-after')
+  if (!raw) return null
+  const seconds = Number(raw)
+  if (Number.isFinite(seconds)) return Math.min(seconds * 1000, 10_000)
+  const at = Date.parse(raw)
+  if (!Number.isNaN(at)) return Math.min(Math.max(at - Date.now(), 0), 10_000)
+  return null
+}
+
+async function attemptStreamChatCompletion(
   req: ChatRequest,
   cb: StreamCallbacks
 ): Promise<void> {
@@ -185,7 +307,7 @@ export async function streamChatCompletion(
     messages: req.messages,
     stream: true,
     usage: { include: true },
-    provider: providerRouting(req.responseFormat !== undefined)
+    provider: providerRouting(req.responseFormat !== undefined, req.enforceZdr)
   }
   if (req.responseFormat !== undefined) body.response_format = req.responseFormat
 
@@ -210,7 +332,8 @@ export async function streamChatCompletion(
 
     if (!res.ok) {
       const text = await res.text().catch(() => '')
-      throw errorForStatus(res.status, text)
+      // Nothing has streamed yet, so the retry loop may safely try again.
+      throw new PreStreamHttpError(res.status, text, retryAfterMs(res))
     }
     if (!res.body) throw new OpenRouterError('provider', 'OpenRouter returned an empty response.')
 

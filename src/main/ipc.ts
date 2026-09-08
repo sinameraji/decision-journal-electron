@@ -198,7 +198,8 @@ async function onlineSettings(): Promise<OnlineSettings> {
     keyHint: key.keyHint,
     defaultModel: settings.defaultModel,
     consentGeneration: settings.consentGeneration,
-    catalogFetchedAt: settings.catalogFetchedAt
+    catalogFetchedAt: settings.catalogFetchedAt,
+    acknowledgedNonZdrModels: settings.acknowledgedNonZdrModels
   }
 }
 
@@ -484,6 +485,23 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('ai:catalog', async (): Promise<OnlineCatalog> => getCachedCatalog())
 
+  ipcMain.handle(
+    'ai:acknowledge-non-zdr',
+    async (_evt, modelId: string): Promise<OnlineSettings> => {
+      // Recorded rather than asked each time, so an automatic path can check
+      // whether the user ever actually agreed to use this model without ZDR.
+      if (typeof modelId === 'string' && modelId.trim()) {
+        const current = await loadOnlineSettings()
+        if (!current.acknowledgedNonZdrModels.includes(modelId)) {
+          await saveOnlineSettings({
+            acknowledgedNonZdrModels: [...current.acknowledgedNonZdrModels, modelId.trim()]
+          })
+        }
+      }
+      return onlineSettings()
+    }
+  )
+
   ipcMain.handle('ai:refresh-catalog', async () => {
     const settings = await loadOnlineSettings()
     if (!settings.enabled) {
@@ -519,8 +537,19 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('ai:send', async (evt, params: SendChatParams) => {
     const sender = evt.sender
-    if (sender.isDestroyed()) return { ok: false as const, code: 'internal' as AiErrorCode, message: 'No window.' }
-    return sendChat(params, sender.id)
+    if (sender.isDestroyed()) {
+      return { ok: false as const, code: 'internal' as AiErrorCode, message: 'No window.' }
+    }
+    try {
+      return await sendChat(params, sender.id)
+    } catch (err) {
+      // A throw here rejects the renderer's invoke(), which previously left the
+      // chat with a sent message, no indicator and no error — indistinguishable
+      // from a hung request. Always come back with something the UI can show.
+      console.error('[ai:send]', err)
+      const message = err instanceof Error ? err.message : String(err)
+      return { ok: false as const, code: 'internal' as AiErrorCode, message }
+    }
   })
 
   ipcMain.handle('ai:cancel', async (_evt, requestId: string): Promise<void> => {

@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   AlertCircle,
+  Loader2,
+  RefreshCw,
+  ShieldAlert,
   ArrowUp,
-  ChevronDown,
   Eraser,
   Eye,
   Globe,
@@ -16,6 +18,7 @@ import Message from './Message'
 import PastChatsDropdown from './PastChatsDropdown'
 import AttachDecisionsModal from './AttachDecisionsModal'
 import SendReviewModal from './SendReviewModal'
+import ModelSwitcher from './ModelSwitcher'
 
 export default function ChatView() {
   const provider = useChatStore((s) => s.provider)
@@ -25,13 +28,15 @@ export default function ChatView() {
   const onlineCatalog = useChatStore((s) => s.onlineCatalog)
   const messages = useChatStore((s) => s.messages)
   const streaming = useChatStore((s) => s.streaming)
+  const sending = useChatStore((s) => s.sending)
   const attachments = useChatStore((s) => s.attachments)
   const activeConversationId = useChatStore((s) => s.activeConversationId)
   const onlineConsentConfirmed = useChatStore((s) => s.onlineConsentConfirmed)
   const sendMessage = useChatStore((s) => s.sendMessage)
   const stopStreaming = useChatStore((s) => s.stopStreaming)
-  const openModelSetup = useChatStore((s) => s.openModelSetup)
   const clearConversation = useChatStore((s) => s.clearConversation)
+  const retryLast = useChatStore((s) => s.retryLast)
+  const openModelSetup = useChatStore((s) => s.openModelSetup)
   const setAttachments = useChatStore((s) => s.setAttachments)
   const confirmOnlineConsent = useChatStore((s) => s.confirmOnlineConsent)
 
@@ -71,7 +76,7 @@ export default function ChatView() {
   }
 
   async function handleSend() {
-    if (!input.trim() || streaming) return
+    if (!input.trim() || streaming || sending) return
     // The first online turn in a thread, and any turn after the attachment
     // scope widened, has to pass through the disclosure first.
     if (online && !onlineConsentConfirmed) {
@@ -111,14 +116,7 @@ export default function ChatView() {
     <div className="mx-auto flex h-full max-w-[780px] flex-col">
       <div className="flex items-center justify-between border-b border-border pb-3">
         <div className="min-w-0">
-          <button
-            type="button"
-            onClick={openModelSetup}
-            className="group inline-flex items-center gap-1.5 text-[13px] text-text-muted hover:text-text"
-          >
-            <span className="font-serif text-[18px] font-medium text-text">{displayLabel}</span>
-            <ChevronDown size={14} strokeWidth={2} className="opacity-60" />
-          </button>
+          <ModelSwitcher label={displayLabel} />
           <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-text-muted">
             {online ? (
               <Globe size={10} strokeWidth={2} className="text-amber-600 dark:text-amber-400" />
@@ -171,7 +169,7 @@ export default function ChatView() {
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto py-4">
-        {messages.length === 0 && !streaming ? (
+        {messages.length === 0 && !streaming && !sending ? (
           <EmptyState online={online} onAttach={() => setShowAttach(true)} />
         ) : (
           <div className="flex flex-col gap-3">
@@ -181,12 +179,17 @@ export default function ChatView() {
             {streaming && streaming.partial && (
               <Message message={{ role: 'assistant', content: streaming.partial }} streaming />
             )}
-            {streaming && !streaming.partial && !streaming.error && <TypingIndicator />}
+            {(sending || (streaming && !streaming.partial && !streaming.error)) && (
+              <TypingIndicator />
+            )}
+            {streaming?.retry && <RetryBanner retry={streaming.retry} />}
             {streaming?.error && (
-              <div className="flex items-start gap-2 rounded-xl border border-red-500/30 bg-red-500/5 px-4 py-3 text-[12.5px] text-red-600 dark:text-red-400">
-                <AlertCircle size={14} strokeWidth={2} className="mt-0.5 shrink-0" />
-                <span>{streaming.error}</span>
-              </div>
+              <ErrorPanel
+                message={streaming.error}
+                code={streaming.errorCode}
+                onRetry={() => void retryLast()}
+                onPickModel={openModelSetup}
+              />
             )}
           </div>
         )}
@@ -202,7 +205,7 @@ export default function ChatView() {
             placeholder="Ask about a decision, or anything else…"
             rows={1}
             className="max-h-[140px] min-h-[24px] flex-1 resize-none bg-transparent text-[13.5px] leading-relaxed text-text placeholder:text-text-muted focus:outline-none"
-            disabled={!!streaming}
+            disabled={!!streaming || sending}
           />
           {!streaming && <MicButton onInsert={handleMicInsert} />}
           {streaming ? (
@@ -312,6 +315,86 @@ function TypingIndicator() {
           <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-muted [animation-delay:-0.15s]" />
           <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-muted" />
         </div>
+      </div>
+    </div>
+  )
+}
+
+/** Shown while the client is waiting before another attempt. */
+function RetryBanner({
+  retry
+}: {
+  retry: { attempt: number; maxAttempts: number; waitMs: number; reason: string }
+}) {
+  const [left, setLeft] = useState(Math.ceil(retry.waitMs / 1000))
+
+  useEffect(() => {
+    setLeft(Math.ceil(retry.waitMs / 1000))
+    const t = setInterval(() => setLeft((n) => (n > 0 ? n - 1 : 0)), 1000)
+    return () => clearInterval(t)
+  }, [retry.attempt, retry.waitMs])
+
+  return (
+    <div className="flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-[12.5px] text-amber-700 dark:text-amber-400">
+      <Loader2 size={14} strokeWidth={2} className="mt-0.5 shrink-0 animate-spin" />
+      <span>
+        {retry.reason}. Retrying in {left}s… (attempt {retry.attempt} of {retry.maxAttempts - 1})
+      </span>
+    </div>
+  )
+}
+
+/** A dead end should offer the two things that actually help. */
+function ErrorPanel({
+  message,
+  code,
+  onRetry,
+  onPickModel
+}: {
+  message: string
+  code: string | null
+  onRetry: () => void
+  onPickModel: () => void
+}) {
+  const privacy = code === 'no-private-route'
+  return (
+    <div
+      className={[
+        'rounded-xl border px-4 py-3',
+        privacy
+          ? 'border-amber-500/40 bg-amber-500/5'
+          : 'border-red-500/30 bg-red-500/5'
+      ].join(' ')}
+    >
+      <div
+        className={[
+          'flex items-start gap-2 text-[12.5px]',
+          privacy ? 'text-amber-700 dark:text-amber-400' : 'text-red-600 dark:text-red-400'
+        ].join(' ')}
+      >
+        {privacy ? (
+          <ShieldAlert size={14} strokeWidth={2} className="mt-0.5 shrink-0" />
+        ) : (
+          <AlertCircle size={14} strokeWidth={2} className="mt-0.5 shrink-0" />
+        )}
+        <span>{message}</span>
+      </div>
+      <div className="mt-2.5 flex gap-2">
+        <button
+          type="button"
+          onClick={onRetry}
+          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-bg px-2.5 py-1.5 text-[11.5px] text-text hover:bg-nav-active"
+        >
+          <RefreshCw size={11} strokeWidth={2} />
+          Try again
+        </button>
+        <button
+          type="button"
+          onClick={onPickModel}
+          className="rounded-md border border-border bg-bg px-2.5 py-1.5 text-[11.5px] text-text hover:bg-nav-active"
+        >
+          Pick another model
+        </button>
       </div>
     </div>
   )

@@ -287,6 +287,8 @@ export interface Api {
     clearApiKey(): Promise<OnlineSettings>
     setDefaultModel(modelId: string): Promise<OnlineSettings>
     catalog(): Promise<OnlineCatalog>
+    /** Records that the user accepted a model with no zero-data-retention route. */
+    acknowledgeNonZdr(modelId: string): Promise<OnlineSettings>
     refreshCatalog(): Promise<
       { ok: true; catalog: OnlineCatalog } | { ok: false; code: AiErrorCode; message: string }
     >

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Globe, RefreshCw, Search, ShieldCheck, Star } from 'lucide-react'
+import { Globe, RefreshCw, Search, ShieldAlert, ShieldCheck, Star } from 'lucide-react'
 import { DEFAULT_ONLINE_MODEL, type OnlineModel } from '@shared/ai'
 import { useChatStore } from '../../store/chat'
 
@@ -23,6 +23,7 @@ export default function OnlineModelList({ onSelect }: { onSelect: (modelId: stri
   const [query, setQuery] = useState('')
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [confirming, setConfirming] = useState<OnlineModel | null>(null)
 
   const defaultModel = online?.defaultModel ?? DEFAULT_ONLINE_MODEL
 
@@ -81,10 +82,15 @@ export default function OnlineModelList({ onSelect }: { onSelect: (modelId: stri
         </div>
       ) : (
         <>
-          <div className="mb-2 flex items-center gap-1.5 text-[11px] text-text-muted">
-            <ShieldCheck size={11} strokeWidth={2} />
-            Only models with a zero-data-retention route are listed. Prices are per million
-            tokens, billed to your OpenRouter account.
+          <div className="mb-2 flex items-start gap-1.5 text-[11px] leading-relaxed text-text-muted">
+            <ShieldCheck size={11} strokeWidth={2} className="mt-0.5 shrink-0" />
+            <span>
+              Models marked <span className="text-emerald-700 dark:text-emerald-400">ZDR</span>{' '}
+              are served by providers that enforce zero data retention. Ones marked{' '}
+              <span className="text-red-600 dark:text-red-400">no ZDR</span> are not — picking one
+              needs your explicit confirmation. Prices are per million tokens, billed to your
+              OpenRouter account.
+            </span>
           </div>
           <div className="flex flex-col gap-2">
             {filtered.map((m) => (
@@ -92,7 +98,7 @@ export default function OnlineModelList({ onSelect }: { onSelect: (modelId: stri
                 key={m.id}
                 model={m}
                 isDefault={m.id === defaultModel}
-                onSelect={() => onSelect(m.id)}
+                onSelect={() => (m.zdrAvailable ? onSelect(m.id) : setConfirming(m))}
               />
             ))}
             {filtered.length === 0 && (
@@ -103,6 +109,87 @@ export default function OnlineModelList({ onSelect }: { onSelect: (modelId: stri
           </div>
         </>
       )}
+
+      {confirming && (
+        <NonZdrConfirmModal
+          model={confirming}
+          onCancel={() => setConfirming(null)}
+          onAccept={async () => {
+            const model = confirming
+            setConfirming(null)
+            await window.api.ai.acknowledgeNonZdr(model.id)
+            await refreshOnline()
+            onSelect(model.id)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+/**
+ * Selecting a model with no zero-data-retention route is a real change to what
+ * happens to the user's journal content, so it is a decision they make once,
+ * explicitly, and we record it.
+ */
+function NonZdrConfirmModal({
+  model,
+  onCancel,
+  onAccept
+}: {
+  model: OnlineModel
+  onCancel: () => void
+  onAccept: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-6 backdrop-blur-sm">
+      <div className="w-[470px] rounded-2xl border border-border bg-bg-elevated p-6 shadow-xl">
+        <div className="flex items-start gap-3">
+          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-red-500/40 bg-red-500/5 text-red-600 dark:text-red-400">
+            <ShieldAlert size={16} strokeWidth={1.75} />
+          </span>
+          <div className="min-w-0">
+            <h3 className="font-serif text-[19px] font-medium text-text">
+              This model does not enforce zero data retention
+            </h3>
+            <p className="mt-0.5 truncate font-mono text-[11px] text-text-muted">{model.id}</p>
+          </div>
+        </div>
+
+        <div className="mt-4 space-y-2.5 text-[12.5px] leading-relaxed text-text-muted">
+          <p>
+            Every other online model here is routed only to providers that contractually agree not
+            to keep your prompts. No provider serving{' '}
+            <span className="font-medium text-text">{model.name}</span> does.
+          </p>
+          <p>
+            If you pick it, the messages you send and the decisions you attach{' '}
+            <span className="font-medium text-text">may be stored by the model provider</span>,
+            for as long as their own policy allows, and we cannot tell you how long that is.
+          </p>
+          <p>
+            Your journal on this Mac stays encrypted, and nothing you have not attached is ever
+            sent. But what you do send leaves our reach entirely.
+          </p>
+        </div>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-md px-3 py-1.5 text-[12.5px] text-text-muted hover:text-text"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onAccept}
+            className="rounded-md border border-red-500/50 bg-red-500/10 px-3 py-1.5 text-[12.5px] font-medium text-red-600 hover:bg-red-500/20 dark:text-red-400"
+          >
+            I understand — use it anyway
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -131,9 +218,12 @@ function OnlineModelRow({
           )}
         </div>
         <div className="mt-0.5 truncate font-mono text-[10.5px] text-text-muted">{model.id}</div>
-        <div className="mt-1 text-[11px] text-text-muted">
-          {formatContext(model.contextLength)} · in {formatPrice(model.promptUsdPerMillion)}/M ·
-          out {formatPrice(model.completionUsdPerMillion)}/M
+        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-text-muted">
+          <ZdrBadge model={model} />
+          <span>
+            {formatContext(model.contextLength)} · in {formatPrice(model.promptUsdPerMillion)}/M ·
+            out {formatPrice(model.completionUsdPerMillion)}/M
+          </span>
         </div>
       </div>
       <button
@@ -144,5 +234,35 @@ function OnlineModelRow({
         Chat
       </button>
     </div>
+  )
+}
+
+/**
+ * Route count matters as much as the yes/no: a model with one ZDR route has no
+ * headroom when that provider is busy, which is what a 429 actually is.
+ */
+function ZdrBadge({ model }: { model: OnlineModel }) {
+  if (!model.zdrAvailable) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded border border-red-500/40 bg-red-500/5 px-1.5 py-0.5 text-[10px] font-medium text-red-600 dark:text-red-400">
+        <ShieldAlert size={9} strokeWidth={2.5} />
+        no ZDR
+      </span>
+    )
+  }
+  const thin = model.zdrProviderCount <= 1
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded border border-emerald-500/30 bg-emerald-500/5 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400"
+      title={`Zero data retention via ${model.zdrProviders.join(', ') || 'a private provider'}`}
+    >
+      <ShieldCheck size={9} strokeWidth={2.5} />
+      ZDR
+      {model.zdrProviderCount > 0 && (
+        <span className={thin ? 'text-amber-700 dark:text-amber-400' : 'opacity-70'}>
+          · {model.zdrProviderCount} route{model.zdrProviderCount === 1 ? '' : 's'}
+        </span>
+      )}
+    </span>
   )
 }

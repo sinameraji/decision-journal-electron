@@ -90,6 +90,8 @@ const api: Api = {
     setDefaultModel: (modelId: string): Promise<OnlineSettings> =>
       ipcRenderer.invoke('ai:set-default-model', modelId),
     catalog: (): Promise<OnlineCatalog> => ipcRenderer.invoke('ai:catalog'),
+    acknowledgeNonZdr: (modelId: string): Promise<OnlineSettings> =>
+      ipcRenderer.invoke('ai:acknowledge-non-zdr', modelId),
     refreshCatalog: () => ipcRenderer.invoke('ai:refresh-catalog'),
     preview: (params) => ipcRenderer.invoke('ai:preview', params),
     send: (params: SendChatParams): Promise<SendChatResult> =>

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { AI_ERROR_HINTS } from '@shared/ai'
 import { asNetworkError, errorForStatus, OpenRouterError } from '../errors'
 
 describe('errorForStatus', () => {
@@ -39,5 +40,36 @@ describe('asNetworkError', () => {
   it('classifies timeouts separately from connection failures', () => {
     expect(asNetworkError(new Error('The operation timed out')).code).toBe('timeout')
     expect(asNetworkError(new Error('getaddrinfo ENOTFOUND')).code).toBe('network')
+  })
+})
+
+/**
+ * A 429 from an upstream provider arrives before any token streams, so nothing
+ * was generated and nothing was billed. Those are the only failures the client
+ * retries — a mid-stream failure must never be retried, because that would
+ * duplicate a paid completion.
+ */
+describe('which failures are safe to retry', () => {
+  const RETRYABLE = new Set([429, 502, 503, 504])
+
+  it('retries transient upstream capacity failures', () => {
+    for (const status of [429, 502, 503, 504]) {
+      expect(RETRYABLE.has(status)).toBe(true)
+    }
+  })
+
+  it('never retries a failure the user must act on', () => {
+    for (const status of [400, 401, 402, 403, 404]) {
+      expect(RETRYABLE.has(status)).toBe(false)
+    }
+  })
+
+  it('a rate limit blames the provider, not the user\'s key', () => {
+    // The old copy read "OpenRouter is rate-limiting this key", which sent the
+    // user off to check an API key that was fine. The limit is upstream.
+    const hint = AI_ERROR_HINTS['rate-limited']
+    expect(hint).not.toMatch(/rate-limiting (this|your) key/i)
+    expect(hint).toMatch(/provider/i)
+    expect(hint).toMatch(/not your (api )?key/i)
   })
 })

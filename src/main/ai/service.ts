@@ -391,12 +391,36 @@ async function run(
     } else {
       const apiKey = await readOpenRouterKey()
       if (!apiKey) throw new OpenRouterError('no-key', 'No OpenRouter API key is saved.')
+
+      // Enforce ZDR unless the user explicitly accepted this model without it.
+      const catalog = await getCachedCatalog()
+      const model = catalog.models.find((m) => m.id === req.modelId)
+      const settings = await loadOnlineSettings()
+      const acknowledged = settings.acknowledgedNonZdrModels.includes(req.modelId)
+      const enforceZdr = model ? model.zdrAvailable || !acknowledged : true
+      if (model && !model.zdrAvailable && !acknowledged) {
+        throw new OpenRouterError(
+          'no-private-route',
+          'This model has no provider that enforces zero data retention, and you have not accepted using it without one.'
+        )
+      }
+
       await streamChatCompletion(
         {
           apiKey,
           model: req.modelId,
           messages,
-          signal: req.controller.signal
+          signal: req.controller.signal,
+          enforceZdr,
+          onRetry: (info) =>
+            emit(req, {
+              requestId,
+              type: 'retry',
+              attempt: info.attempt,
+              maxAttempts: info.maxAttempts,
+              waitMs: info.waitMs,
+              reason: info.reason
+            })
         },
         {
           onToken: (token) => {
