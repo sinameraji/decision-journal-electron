@@ -21,7 +21,7 @@ Built for macOS by [Sina Meraji](https://github.com/sinameraji).
 
 Most journaling apps want your data in their cloud. This one is the opposite. Decision Journal is designed from the ground up for the kind of thinking you'd never want leaking — career pivots, relationships, money, risk, the honest stuff you'd normally only trust to a paper notebook.
 
-- **Your journal stays on your Mac.** There is no account. There is no cloud. Your decisions, reviews, analytics, audio transcripts, and AI coach conversations all live on-device and never leave it. A network kill-switch in the main process blocks every outbound request by default — the only exceptions are a small, explicit allowlist (app update checks, Whisper model downloads) documented in [Network activity](#network-activity) below. None of those ever carry your journal data.
+- **Your journal stays on your Mac.** There is no account. There is no cloud. Your decisions, reviews, analytics, audio transcripts, and AI coach conversations live on-device. A network kill-switch in the main process blocks every outbound request by default — the exceptions are a small, explicit allowlist (app update checks, Whisper model downloads) documented in [Network activity](#network-activity) below, and none of those carry journal data. The one way journal content can leave this Mac is if *you* turn on **optional online AI**, add your own OpenRouter API key, and attach specific decisions to a chat. It is off by default, off after an upgrade, and off again after restoring a backup.
 - **Your journal is encrypted.** The database file is locked with a key derived from your PIN and your Mac's login keychain. If someone copies the file off your disk, it looks like random noise to them.
 - **You hold the only key.** There is no "forgot your PIN" flow. If you lose the PIN, your data is gone — by design.
 
@@ -41,7 +41,7 @@ That's it. No sign-up, no email, no account to create.
 - **New Decision** — capture a decision as you make it: what you're deciding, what you considered, what you expect to happen, and when to revisit. Dictate it hands-free with on-device Whisper transcription if you'd rather talk than type.
 - **Reviews** — come back to past decisions and log how things actually turned out. This is where the real learning happens.
 - **Analytics** — see patterns in your own decision quality over time: timeline, review status, mental-state distribution, and mental-state trends.
-- **Chat** — a local AI coach (powered by Ollama, running entirely on your machine) to talk through past decisions, check for bias, and think through opportunity costs.
+- **Chat** — an AI coach to talk through past decisions, check for bias, and think through opportunity costs. By default it runs a local model via Ollama, entirely on your machine. You can optionally enable an online model through your own OpenRouter account; in that mode only the messages you type and the decisions you explicitly attach are sent.
 - **Settings** — toggle Touch ID, manage Whisper models, restore from backup, check for app updates, lock instantly.
 
 ## What your data looks like on disk
@@ -55,25 +55,37 @@ If you ever want a fresh start, quit the app and delete those two files.
 
 ## Network activity
 
-The app is offline-first. Your journal is never transmitted anywhere, and a kill-switch in the main process blocks every outbound request by default. There are three narrow exceptions, all documented here:
+The app is offline-first. A kill-switch in the main process blocks every outbound request by default. There are four narrow exceptions, all documented here. The first three never carry journal content; the fourth is the optional online AI, which is off unless you turn it on:
 
 | Request | Who triggers it | When / how often | Destination |
 |---|---|---|---|
 | Check for app updates | App (automatic on launch) + user button in Settings → About. **Can be turned off** in Settings → About → "Check for updates automatically". | Once per app launch (or never, if disabled) | `github.com` (GitHub Releases feed, via `electron-updater`) |
 | Download an app update | **User only** (click "Download Update") | Only when you opt in — auto-download is disabled | `github.com` (release assets) |
 | Download a Whisper transcription model | **User only** (click "Download" in Settings → Transcription) | Only when you opt in, one time per model | `huggingface.co` and its CDN |
+| **Optional online AI chat** — *the only request that can carry journal content* | **User only.** Requires turning on Settings → Online AI, saving your own OpenRouter API key, and confirming a per-conversation disclosure. | Only when you send a message in a chat you have switched to an online model | `openrouter.ai` and, through it, the model provider you routed to |
 
 What's *not* a network request:
-- **Your decisions, reviews, analytics, and chat history.** These never leave your Mac.
-- **The local AI coach.** Chat runs against a local Ollama daemon on `localhost:11434` — it's on-device, not over the internet.
+- **Your decisions, reviews, and analytics.** These stay on your Mac. Nothing is uploaded in the background, ever — there is no sync and no backup service.
+- **The local AI coach.** With a local model, chat runs against an Ollama daemon on `localhost:11434` — on-device, not over the internet.
 - **Audio transcription.** Whisper runs fully on-device once the model is downloaded.
 - **External links.** Clicking a "learn more" link opens your default browser, which is separate from the app's network sandbox.
 
 There is **no telemetry, no crash reporting, and no "anonymous analytics"** of any kind.
 
+### If you turn on online AI
+
+This is the only feature that can send journal content off your Mac, so it's worth being precise:
+
+- **It is off by default** — on a fresh install, after an upgrade, and again after you restore a backup.
+- **You bring your own key.** There is no Decision Journal account, backend, or subscription. Requests are billed to your OpenRouter account. The key is stored in your macOS Keychain, is never returned to the app's UI once saved, and is **not** included in an exported backup.
+- **Only what you attach is sent.** A conversation sends the messages in that thread plus the decisions you explicitly attached to it. The rest of your journal is not included. "What gets sent" in the chat header shows the exact payload before you send it.
+- **Requests are pinned to zero-data-retention routes** (`zdr: true`), providers that may train on inputs are refused (`data_collection: "deny"`), and response caching is switched off. If no compliant route exists for a model, the request **fails with an explanation** — it is never retried on a route that retains your data.
+- **What we can't promise.** OpenRouter still records request metadata, and the downstream provider has its own policy. This is a provider-policy restriction, not on-device processing and not end-to-end encryption against the model provider. Once a message is sent, it cannot be recalled.
+- **Turning it off** cancels anything in flight and revokes consent, so a reply that arrives late is discarded rather than saved.
+
 ## Privacy & security in plain English
 
-- **Offline for your data.** See [Network activity](#network-activity) above for the full list of exceptions (app update checks, optional Whisper model downloads). None of them ever carry your journal content.
+- **Offline for your data by default.** See [Network activity](#network-activity) above for the full list of exceptions. App update checks and Whisper model downloads never carry journal content. Optional online AI can — but only after you enable it, add your own API key, and attach specific decisions to a chat.
 - **Encrypted at rest.** Your journal is stored in an encrypted SQLite database (SQLCipher). The encryption key is a random 256-bit key generated once on your first launch.
 - **Your PIN protects the key, and macOS protects the PIN.** Your 6-digit PIN is run through a slow key-stretching function (Argon2id) and used to encrypt the real key. That encrypted blob is then encrypted *again* using macOS's built-in Keychain, which is tied to your Mac login password and the Secure Enclave. So even if someone copies your database file, they can't brute-force the PIN — they'd need to also unlock your Mac account.
 - **Touch ID is convenience, not a replacement.** When you enable Touch ID, your fingerprint just provides a quicker path to the same encryption key. Your PIN is still the source of truth.
@@ -86,6 +98,7 @@ There is **no telemetry, no crash reporting, and no "anonymous analytics"** of a
 - Search and filtering across your journal
 - Analytics — decision timeline, review status, mental-state distribution, mental-state over time
 - Local AI coach via Ollama — chat with your past decisions, ask for second opinions, get bias checks, all running on-device
+- Optional online AI via your own OpenRouter key — off by default, zero-data-retention routing, and only the decisions you attach are sent
 - On-device voice transcription via Whisper — dictate decisions hands-free, audio never leaves your Mac
 - Encrypted backup and restore
 - Touch ID unlock

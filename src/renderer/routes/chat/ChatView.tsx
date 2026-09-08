@@ -1,34 +1,58 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowUp, ChevronDown, Square, Eraser, AlertCircle } from 'lucide-react'
+import {
+  AlertCircle,
+  ArrowUp,
+  ChevronDown,
+  Eraser,
+  Eye,
+  Globe,
+  Laptop,
+  Paperclip,
+  Square
+} from 'lucide-react'
 import { useChatStore } from '../../store/chat'
 import MicButton from '../../components/voice/MicButton'
 import Message from './Message'
 import PastChatsDropdown from './PastChatsDropdown'
+import AttachDecisionsModal from './AttachDecisionsModal'
+import SendReviewModal from './SendReviewModal'
 
 export default function ChatView() {
+  const provider = useChatStore((s) => s.provider)
   const activeModel = useChatStore((s) => s.activeModel)
   const catalog = useChatStore((s) => s.catalog)
   const installed = useChatStore((s) => s.installed)
+  const onlineCatalog = useChatStore((s) => s.onlineCatalog)
   const messages = useChatStore((s) => s.messages)
   const streaming = useChatStore((s) => s.streaming)
+  const attachments = useChatStore((s) => s.attachments)
+  const activeConversationId = useChatStore((s) => s.activeConversationId)
+  const onlineConsentConfirmed = useChatStore((s) => s.onlineConsentConfirmed)
   const sendMessage = useChatStore((s) => s.sendMessage)
   const stopStreaming = useChatStore((s) => s.stopStreaming)
   const openModelSetup = useChatStore((s) => s.openModelSetup)
   const clearConversation = useChatStore((s) => s.clearConversation)
+  const setAttachments = useChatStore((s) => s.setAttachments)
+  const confirmOnlineConsent = useChatStore((s) => s.confirmOnlineConsent)
 
   const [input, setInput] = useState('')
+  const [showAttach, setShowAttach] = useState(false)
+  const [review, setReview] = useState<'consent' | 'preview' | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
 
+  const online = provider === 'openrouter'
+  const onlineModel = onlineCatalog.find((m) => m.id === activeModel)
   const catalogEntry = catalog.find((m) => m.id === activeModel)
   const installedEntry = installed.find((m) => m.id === activeModel)
-  const displayLabel = catalogEntry?.label ?? activeModel ?? ''
-  const displayParams = catalogEntry?.paramCount ?? installedEntry?.parameterSize ?? ''
-  const displaySizeGB = catalogEntry?.sizeGB
-    ? `${catalogEntry.sizeGB} GB`
-    : installedEntry
-      ? `${(installedEntry.sizeBytes / 1024 ** 3).toFixed(1)} GB`
-      : ''
+
+  const displayLabel = online
+    ? (onlineModel?.name ?? activeModel ?? '')
+    : (catalogEntry?.label ?? activeModel ?? '')
+
+  const subtitle = online
+    ? `Online · OpenRouter${onlineModel ? ` · ${onlineModel.id}` : ''}`
+    : `Running locally${catalogEntry?.paramCount ? ` · ${catalogEntry.paramCount}` : installedEntry?.parameterSize ? ` · ${installedEntry.parameterSize}` : ''}`
 
   useEffect(() => {
     const el = scrollRef.current
@@ -42,12 +66,26 @@ export default function ChatView() {
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      handleSend()
+      void handleSend()
     }
   }
 
   async function handleSend() {
     if (!input.trim() || streaming) return
+    // The first online turn in a thread, and any turn after the attachment
+    // scope widened, has to pass through the disclosure first.
+    if (online && !onlineConsentConfirmed) {
+      setReview('consent')
+      return
+    }
+    const text = input
+    setInput('')
+    await sendMessage(text)
+  }
+
+  async function handleConfirmedSend() {
+    confirmOnlineConsent()
+    setReview(null)
     const text = input
     setInput('')
     await sendMessage(text)
@@ -78,14 +116,16 @@ export default function ChatView() {
             onClick={openModelSetup}
             className="group inline-flex items-center gap-1.5 text-[13px] text-text-muted hover:text-text"
           >
-            <span className="font-serif text-[18px] font-medium text-text">
-              {displayLabel}
-            </span>
+            <span className="font-serif text-[18px] font-medium text-text">{displayLabel}</span>
             <ChevronDown size={14} strokeWidth={2} className="opacity-60" />
           </button>
-          <div className="mt-0.5 text-[11px] text-text-muted">
-            Running locally{displayParams ? ` · ${displayParams}` : ''}
-            {displaySizeGB ? ` · ${displaySizeGB}` : ''}
+          <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-text-muted">
+            {online ? (
+              <Globe size={10} strokeWidth={2} className="text-amber-600 dark:text-amber-400" />
+            ) : (
+              <Laptop size={10} strokeWidth={2} />
+            )}
+            <span className="truncate">{subtitle}</span>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -103,13 +143,40 @@ export default function ChatView() {
         </div>
       </div>
 
+      <div className="flex items-center gap-2 border-b border-border py-2">
+        <button
+          type="button"
+          onClick={() => setShowAttach(true)}
+          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-bg px-2.5 py-1.5 text-[11.5px] text-text-muted hover:text-text"
+        >
+          <Paperclip size={12} strokeWidth={2} />
+          {attachments.length === 0
+            ? 'Attach decisions'
+            : `${attachments.length} decision${attachments.length === 1 ? '' : 's'} attached`}
+        </button>
+        <button
+          type="button"
+          onClick={() => setReview('preview')}
+          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-bg px-2.5 py-1.5 text-[11.5px] text-text-muted hover:text-text"
+        >
+          <Eye size={12} strokeWidth={2} />
+          What gets sent
+        </button>
+        {online && (
+          <span className="ml-auto inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/5 px-2 py-1 text-[10.5px] text-amber-700 dark:text-amber-400">
+            <Globe size={10} strokeWidth={2} />
+            Leaves your Mac
+          </span>
+        )}
+      </div>
+
       <div ref={scrollRef} className="flex-1 overflow-y-auto py-4">
         {messages.length === 0 && !streaming ? (
-          <EmptyState />
+          <EmptyState online={online} onAttach={() => setShowAttach(true)} />
         ) : (
           <div className="flex flex-col gap-3">
             {messages.map((m, i) => (
-              <Message key={i} message={m} />
+              <Message key={m.id ?? `local-${i}`} message={m} />
             ))}
             {streaming && streaming.partial && (
               <Message message={{ role: 'assistant', content: streaming.partial }} streaming />
@@ -125,7 +192,7 @@ export default function ChatView() {
         )}
       </div>
 
-      <div className="border-t border-border pt-3 pb-4">
+      <div className="border-t border-border pb-4 pt-3">
         <div className="flex items-end gap-2 rounded-xl border border-border bg-bg-elevated px-3 py-2">
           <textarea
             ref={textareaRef}
@@ -160,39 +227,78 @@ export default function ChatView() {
           )}
         </div>
         <div className="mt-1.5 text-center text-[10.5px] text-text-muted/80">
-          Messages and replies stay on this Mac. The model sees your recent decisions as
-          context.
+          {online
+            ? 'This chat and the decisions you attach are sent to OpenRouter and the model provider. Nothing else from your journal is.'
+            : 'Messages and replies stay on this Mac. The model sees the decisions you attach, plus titles of your recent ones.'}
         </div>
       </div>
+
+      {showAttach && (
+        <AttachDecisionsModal
+          selected={attachments}
+          onClose={() => setShowAttach(false)}
+          onSave={(ids) => {
+            void setAttachments(ids)
+            setShowAttach(false)
+          }}
+        />
+      )}
+
+      {review && (
+        <SendReviewModal
+          provider={provider}
+          modelId={activeModel}
+          conversationId={activeConversationId}
+          attachments={attachments}
+          pendingText={input}
+          onConfirm={review === 'consent' ? handleConfirmedSend : null}
+          onClose={() => setReview(null)}
+        />
+      )}
     </div>
   )
 }
 
-function EmptyState() {
+function EmptyState({ online, onAttach }: { online: boolean; onAttach: () => void }) {
   const suggestions = [
-    'What patterns do you see in my recent decisions?',
+    'What patterns do you see in the decisions I attached?',
     'Help me think through my most recent decision.',
     'What questions should I be asking myself right now?'
   ]
   const sendMessage = useChatStore((s) => s.sendMessage)
+  const onlineConsentConfirmed = useChatStore((s) => s.onlineConsentConfirmed)
+  const canQuickSend = !online || onlineConsentConfirmed
+
   return (
     <div className="mt-10 flex flex-col items-center">
       <div className="font-serif text-[22px] font-medium text-text">How can I help?</div>
-      <p className="mt-1 text-[12.5px] text-text-muted">
-        I can see your recent decisions. Try one of these:
+      <p className="mt-1 max-w-[420px] text-center text-[12.5px] text-text-muted">
+        {online
+          ? 'Attach the decisions you want this model to see. Nothing else from your journal is sent.'
+          : 'Attach a decision for the full detail, or just ask — the local model can see your recent titles.'}
       </p>
-      <div className="mt-5 flex w-full max-w-[520px] flex-col gap-2">
-        {suggestions.map((s) => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => sendMessage(s)}
-            className="rounded-lg border border-border bg-bg-elevated px-4 py-2.5 text-left text-[12.5px] text-text hover:bg-nav-active"
-          >
-            {s}
-          </button>
-        ))}
-      </div>
+      <button
+        type="button"
+        onClick={onAttach}
+        className="mt-4 inline-flex items-center gap-1.5 rounded-md border border-border bg-bg-elevated px-3 py-1.5 text-[12px] text-text hover:bg-nav-active"
+      >
+        <Paperclip size={12} strokeWidth={2} />
+        Attach decisions
+      </button>
+      {canQuickSend && (
+        <div className="mt-5 flex w-full max-w-[520px] flex-col gap-2">
+          {suggestions.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => sendMessage(s)}
+              className="rounded-lg border border-border bg-bg-elevated px-4 py-2.5 text-left text-[12.5px] text-text hover:bg-nav-active"
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

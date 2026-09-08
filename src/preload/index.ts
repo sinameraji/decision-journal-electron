@@ -2,8 +2,6 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type {
   Api,
   CatalogModel,
-  ChatMsg,
-  Conversation,
   ConversationSummary,
   Decision,
   DecisionCreateInput,
@@ -24,6 +22,16 @@ import type {
   WhisperModelInfo,
   WhisperStatus
 } from '@shared/ipc-contract'
+import type {
+  AiEvent,
+  AttachmentScope,
+  ConversationMeta,
+  OnlineCatalog,
+  OnlineSettings,
+  SendChatParams,
+  SendChatResult,
+  StoredChatMessage
+} from '@shared/ai'
 
 const api: Api = {
   vault: {
@@ -63,16 +71,35 @@ const api: Api = {
     delete: (id: string): Promise<void> => ipcRenderer.invoke('decisions:delete', id)
   },
   conversations: {
-    create: (modelId: string, title: string): Promise<Conversation> =>
-      ipcRenderer.invoke('conversations:create', modelId, title),
-    list: (): Promise<ConversationSummary[]> =>
-      ipcRenderer.invoke('conversations:list'),
-    messages: (id: string): Promise<ChatMsg[]> =>
+    list: (): Promise<ConversationSummary[]> => ipcRenderer.invoke('conversations:list'),
+    get: (id: string): Promise<ConversationMeta | null> =>
+      ipcRenderer.invoke('conversations:get', id),
+    messages: (id: string): Promise<StoredChatMessage[]> =>
       ipcRenderer.invoke('conversations:messages', id),
-    appendMessage: (id: string, role: string, content: string): Promise<void> =>
-      ipcRenderer.invoke('conversations:append-message', id, role, content),
-    delete: (id: string): Promise<void> =>
-      ipcRenderer.invoke('conversations:delete', id)
+    setAttachments: (id: string, attachments: AttachmentScope): Promise<void> =>
+      ipcRenderer.invoke('conversations:set-attachments', id, attachments),
+    delete: (id: string): Promise<void> => ipcRenderer.invoke('conversations:delete', id)
+  },
+  ai: {
+    getSettings: (): Promise<OnlineSettings> => ipcRenderer.invoke('ai:get-settings'),
+    setEnabled: (enabled: boolean): Promise<OnlineSettings> =>
+      ipcRenderer.invoke('ai:set-enabled', enabled),
+    setApiKey: (key: string): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke('ai:set-api-key', key),
+    clearApiKey: (): Promise<OnlineSettings> => ipcRenderer.invoke('ai:clear-api-key'),
+    setDefaultModel: (modelId: string): Promise<OnlineSettings> =>
+      ipcRenderer.invoke('ai:set-default-model', modelId),
+    catalog: (): Promise<OnlineCatalog> => ipcRenderer.invoke('ai:catalog'),
+    refreshCatalog: () => ipcRenderer.invoke('ai:refresh-catalog'),
+    preview: (params) => ipcRenderer.invoke('ai:preview', params),
+    send: (params: SendChatParams): Promise<SendChatResult> =>
+      ipcRenderer.invoke('ai:send', params),
+    cancel: (requestId: string): Promise<void> => ipcRenderer.invoke('ai:cancel', requestId),
+    onEvent: (cb: (evt: AiEvent) => void) => {
+      const listener = (_: unknown, evt: AiEvent) => cb(evt)
+      ipcRenderer.on('ai:event', listener)
+      return () => ipcRenderer.removeListener('ai:event', listener)
+    }
   },
   theme: {
     get: (): Promise<ThemeMode> => ipcRenderer.invoke('theme:get'),
@@ -131,8 +158,6 @@ const api: Api = {
       ipcRenderer.invoke('ollama:remove', modelId),
     show: (modelId: string): Promise<ModelInfo | null> =>
       ipcRenderer.invoke('ollama:show', modelId),
-    chat: (modelId: string, messages: ChatMsg[]): Promise<string> =>
-      ipcRenderer.invoke('ollama:chat', modelId, messages),
     onEvent: (cb: (evt: OllamaEvent) => void) => {
       const listener = (_: unknown, evt: OllamaEvent) => cb(evt)
       ipcRenderer.on('ollama:event', listener)

@@ -1,4 +1,17 @@
 import type { CatalogEntry } from './models'
+import type {
+  AiErrorCode,
+  AiEvent,
+  AiProvider,
+  AttachmentScope,
+  ConversationMeta,
+  OnlineCatalog,
+  OnlineSettings,
+  PayloadPreview,
+  SendChatParams,
+  SendChatResult,
+  StoredChatMessage
+} from './ai'
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 
@@ -215,18 +228,11 @@ export interface WhisperDownloadProgress {
   total: number
 }
 
-export interface Conversation {
-  id: string
-  title: string
-  modelId: string
-  createdAt: number
-  updatedAt: number
-}
-
 export interface ConversationSummary {
   id: string
   title: string
   modelId: string
+  provider: AiProvider
   updatedAt: number
 }
 
@@ -266,11 +272,36 @@ export interface Api {
     delete(id: string): Promise<void>
   }
   conversations: {
-    create(modelId: string, title: string): Promise<Conversation>
     list(): Promise<ConversationSummary[]>
-    messages(id: string): Promise<ChatMsg[]>
-    appendMessage(id: string, role: string, content: string): Promise<void>
+    get(id: string): Promise<ConversationMeta | null>
+    messages(id: string): Promise<StoredChatMessage[]>
+    setAttachments(id: string, attachments: AttachmentScope): Promise<void>
     delete(id: string): Promise<void>
+  }
+  ai: {
+    /** Non-secret settings. Never returns the stored API key. */
+    getSettings(): Promise<OnlineSettings>
+    /** Turning this off also revokes consent for anything still in flight. */
+    setEnabled(enabled: boolean): Promise<OnlineSettings>
+    setApiKey(key: string): Promise<{ ok: boolean; error?: string }>
+    clearApiKey(): Promise<OnlineSettings>
+    setDefaultModel(modelId: string): Promise<OnlineSettings>
+    catalog(): Promise<OnlineCatalog>
+    refreshCatalog(): Promise<
+      { ok: true; catalog: OnlineCatalog } | { ok: false; code: AiErrorCode; message: string }
+    >
+    preview(params: {
+      conversationId: string | null
+      provider: AiProvider
+      modelId: string
+      attachments: AttachmentScope
+      pendingText: string
+    }): Promise<
+      { ok: true; preview: PayloadPreview } | { ok: false; code: AiErrorCode; message: string }
+    >
+    send(params: SendChatParams): Promise<SendChatResult>
+    cancel(requestId: string): Promise<void>
+    onEvent(cb: (evt: AiEvent) => void): () => void
   }
   theme: {
     get(): Promise<ThemeMode>
@@ -307,7 +338,6 @@ export interface Api {
     cancel(requestId: string): Promise<void>
     remove(modelId: string): Promise<{ ok: boolean; error?: string }>
     show(modelId: string): Promise<ModelInfo | null>
-    chat(modelId: string, messages: ChatMsg[]): Promise<string>
     onEvent(cb: (evt: OllamaEvent) => void): () => void
     openExternal(url: string): Promise<void>
   }

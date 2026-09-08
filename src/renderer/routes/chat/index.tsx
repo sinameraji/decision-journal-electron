@@ -1,6 +1,5 @@
 import { useEffect } from 'react'
 import { useChatStore } from '../../store/chat'
-import NotInstalled from './NotInstalled'
 import ModelSetup from './ModelSetup'
 import ChatView from './ChatView'
 
@@ -18,12 +17,11 @@ export default function Chat() {
         <h1 className="font-serif text-[34px] font-medium leading-tight tracking-tight text-text">
           Chat
         </h1>
-        <p className="mt-1 text-[13px] text-text-muted">Checking for Ollama…</p>
+        <p className="mt-1 text-[13px] text-text-muted">Checking which models are available…</p>
       </div>
     )
   }
 
-  if (stage === 'not-installed') return <NotInstalled />
   if (stage === 'chat') return <ChatView />
   return <ModelSetup />
 }

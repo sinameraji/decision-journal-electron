@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Fingerprint, Lock, Mic, Download, Trash2, Loader2, CheckCircle2, AlertTriangle, HardDriveDownload, Heart, RefreshCw } from 'lucide-react'
 import PinPad from '../components/PinPad'
 import SupportModal from '../components/SupportModal'
+import OnlineAiSettings from '../components/OnlineAiSettings'
 import { useAuthStore } from '../store/auth'
 import { useTranscriptionStore } from '../store/transcription'
 import type { WhisperModelInfo, UpdateStatus } from '@shared/ipc-contract'
@@ -167,7 +168,8 @@ export default function Settings() {
         Settings
       </h1>
       <p className="mt-1 text-[13px] text-text-muted">
-        Your data is encrypted on-device. Nothing leaves your Mac.
+        Your journal is encrypted on-device. Nothing leaves your Mac unless you turn on online AI
+        below and attach it to a chat.
       </p>
 
       <section className="mt-8">
@@ -252,6 +254,8 @@ export default function Settings() {
           ))}
         </div>
       </section>
+
+      <OnlineAiSettings />
 
       <section className="mt-8">
         <h2 className="mb-3 text-[13px] font-semibold uppercase tracking-wide text-text-muted">

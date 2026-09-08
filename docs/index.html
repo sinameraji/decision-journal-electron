@@ -667,7 +667,8 @@
           <h2 class="serif">Built to stay private.</h2>
           <p>
             This isn't a web app with a login. It's a native Mac app that stores everything locally,
-            encrypts it, and blocks its own network access. Your data is yours. Full stop.
+            encrypts it, and blocks its own network access. Anything that goes online is something you
+            switched on and chose to send. Your data is yours. Full stop.
           </p>
           <p>
             No subscription, no sync, no surveillance. Just a quiet place to think clearly and
@@ -686,7 +687,9 @@
             <h3>Your journal stays on your Mac</h3>
             <p>
               No accounts. No cloud. A kill-switch in the main process blocks every outbound request by
-              default — your decisions never leave your machine. Not even analytics.
+              default — nothing is uploaded in the background, not even analytics. The one exception is
+              opt-in: if you turn on online AI with your own API key, the decisions you attach to that
+              chat are sent. Off unless you ask for it.
             </p>
             <span class="tag">Zero network by default</span>
           </div>
@@ -704,9 +707,10 @@
             <h3>Local AI, on your machine</h3>
             <p>
               Chat with a local Ollama model about past decisions. Dictate new ones with on-device Whisper.
-              No prompts, no audio, and no text ever leaves your Mac.
+              No prompts, no audio, no text off your Mac. Want a frontier model instead? Bring your own
+              OpenRouter key — you pick the model and which decisions it sees.
             </p>
-            <span class="tag">Ollama + Whisper</span>
+            <span class="tag">Ollama + Whisper · optional OpenRouter</span>
           </div>
           <div class="feature-card wide reveal">
             <span class="num">04</span>

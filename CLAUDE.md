@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Decision Journal is an offline-only, encrypted Electron desktop app (macOS) for recording decisions and reviewing outcomes over time. It makes **zero network requests** by design — a network kill-switch in the main process blocks all outbound traffic except `file://`, `localhost`, whitelisted Whisper model downloads, and Ollama docs links. Local AI features (Ollama chat, Whisper transcription) run entirely on-device.
+Decision Journal is a local-first, encrypted Electron desktop app (macOS) for recording decisions and reviewing outcomes over time. It makes **zero network requests by default** — a network kill-switch in the main process blocks all outbound traffic on `session.defaultSession` except `file://`, `localhost`, whitelisted Whisper model downloads, and Ollama docs links. Local AI features (Ollama chat, Whisper transcription) run entirely on-device.
+
+The one exception is **optional online AI** (`src/main/ai/`): the user can turn on OpenRouter chat, supply their own API key, and attach specific decisions to a conversation. It is off by default, off after upgrade, and off again after a restore. It does not use the default session — it has its own non-persistent session with its own strict origin gate. Never widen that gate, and never route journal content through the default session.
 
 ## Commands
 
@@ -13,16 +15,19 @@ Decision Journal is an offline-only, encrypted Electron desktop app (macOS) for 
 | `npm run dev` | Start electron-vite dev mode with HMR (renderer on port 5173) |
 | `npm run build` | Bundle main/preload/renderer into `out/` |
 | `npm run typecheck` | `tsc --noEmit` against both `tsconfig.node.json` and `tsconfig.web.json` |
+| `npm test` | Vitest unit tests (`src/**/__tests__/*.test.ts`). No network, no credentials. |
 | `npm run dist:mac:local` | Unsigned universal DMG in `release/` for local smoke-testing |
 | `npm run dist:mac` | Signed + notarized build (CI only — requires signing secrets) |
 
-There is no test suite or linter configured. Type checking (`npm run typecheck`) is the primary code-correctness gate.
+There is no linter configured. `npm run typecheck`, `npm test` and `npm run build` are the correctness gates, and `.github/workflows/ci.yml` runs all three on every PR.
+
+Unit tests cover the pure, high-risk logic in the AI layer (SSE framing, provider error classification, the URL allowlist, prompt construction). Modules that import `electron` cannot be imported from a test, which is why the pure parts live in `src/main/ai/endpoints.ts` and `src/main/ai/errors.ts` rather than inside the client. Keep it that way when adding logic worth testing.
 
 ## Architecture
 
 Three-process Electron app built with electron-vite:
 
-- **Main process** (`src/main/`) — window management, IPC handlers, SQLCipher database, encryption vault, Ollama/Whisper clients, network kill-switch, CSP enforcement.
+- **Main process** (`src/main/`) — window management, IPC handlers, SQLCipher database, encryption vault, Ollama/Whisper/OpenRouter clients, network kill-switch, CSP enforcement.
 - **Preload** (`src/preload/index.ts`) — `contextBridge` exposing `window.api`. This is the only surface the renderer can access. Context isolation and sandbox are both enabled.
 - **Renderer** (`src/renderer/`) — React 18 + TypeScript app with hash routing (`file://`-compatible), Zustand state stores, Tailwind CSS with CSS-variable tokens.
 - **Shared** (`src/shared/`) — `ipc-contract.ts` defines the full `Api` interface and types used by both main and preload.
@@ -36,6 +41,20 @@ All renderer-to-main communication goes through `window.api` (defined in `src/sh
 Read `CONTRIBUTING.md` "How the crypto is set up" before touching `src/main/crypto/` or `src/main/db/`. Summary: a random 256-bit master key encrypts the SQLCipher DB. The master key is double-wrapped (Argon2id-derived PIN key + macOS `safeStorage`/Keychain). Touch ID adds a third wrap as an alternative unlock path.
 
 Key files: `vault.ts` (key wrapping), `kdf.ts` (Argon2id params), `keychain.ts` (safeStorage), `db/open.ts` (SQLCipher PRAGMA key).
+
+### AI provider layer (`src/main/ai/`)
+
+Chat runs through one service for both providers. The renderer supplies identifiers and the user's text; the main process decides whether the request is authorized, builds the prompt, and owns persistence.
+
+- `service.ts` — request lifecycle and conversation persistence. Every request is stamped with the consent generation and vault generation current at dispatch; both are rechecked before the request goes out and again before a reply is written, so a late reply cannot land in a locked or restored vault.
+- `network.ts` / `endpoints.ts` — the non-persistent online session and its allowlist. `endpoints.ts` is pure so it can be tested.
+- `openrouterClient.ts` — chat completions and catalog. Streaming uses a real SSE parser (`sse.ts`), never the Ollama NDJSON reader.
+- `errors.ts` — maps status codes and in-stream provider errors to actionable codes. Provider bodies are inspected but never logged or shown verbatim.
+- `context.ts` — builds the system prompt. Online requests include only explicitly attached decisions; local requests may also see a title-only index of recent ones.
+- `credentials.ts` — the API key, wrapped with `safeStorage` in its own file. Never returned over IPC and never part of a backup.
+- `settings.ts` — activation state and the consent generation counter.
+
+Rules when touching this: online is off by default and stays off through upgrade and restore; nothing beyond attached decisions goes online; failing closed on privacy routing is correct — never retry with `zdr`/`data_collection` relaxed.
 
 ### State management
 
@@ -80,3 +99,8 @@ All user data lives in `~/Library/Application Support/Decision Journal/`:
 - `decisions.db` — encrypted SQLCipher database
 - `vault.json` — wrapped encryption keys, failed attempt counters, cooldown state
 - `whisper/` — downloaded Whisper model files
+- `online-ai.json` — online-AI activation state and consent generation (no secrets)
+- `online-credentials.json` — the OpenRouter API key, wrapped by macOS `safeStorage`
+- `online-catalog.json` — cached model catalog (no journal content)
+
+Only `decisions.db` and `vault.json` are copied by `vault:export`. The credential file is deliberately excluded so a backup never carries the API key.

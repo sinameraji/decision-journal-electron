@@ -127,6 +127,37 @@ const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation
         ON chat_messages(conversation_id, created_at ASC);
     `
+  },
+  {
+    // Provider metadata for conversations. Everything that existed before this
+    // migration was an Ollama conversation, so that is the default; no existing
+    // decision or message content is rewritten.
+    version: 5,
+    sql: `
+      ALTER TABLE conversations ADD COLUMN provider       TEXT    NOT NULL DEFAULT 'ollama';
+      ALTER TABLE conversations ADD COLUMN attachments    TEXT    NOT NULL DEFAULT '[]';
+      ALTER TABLE conversations ADD COLUMN online_consent INTEGER NOT NULL DEFAULT 0;
+
+      ALTER TABLE chat_messages ADD COLUMN status   TEXT NOT NULL DEFAULT 'complete';
+      ALTER TABLE chat_messages ADD COLUMN provider TEXT;
+      ALTER TABLE chat_messages ADD COLUMN model_id TEXT;
+      ALTER TABLE chat_messages ADD COLUMN seq      INTEGER NOT NULL DEFAULT 0;
+
+      UPDATE chat_messages SET seq = (
+        SELECT COUNT(*) FROM chat_messages m2
+         WHERE m2.conversation_id = chat_messages.conversation_id
+           AND (m2.created_at < chat_messages.created_at
+                OR (m2.created_at = chat_messages.created_at AND m2.rowid <= chat_messages.rowid))
+      );
+
+      UPDATE chat_messages
+         SET provider = 'ollama',
+             model_id = (SELECT c.model_id FROM conversations c WHERE c.id = conversation_id)
+       WHERE role = 'assistant';
+
+      CREATE INDEX IF NOT EXISTS idx_chat_messages_seq
+        ON chat_messages(conversation_id, seq ASC);
+    `
   }
 ]
 
