@@ -16,12 +16,17 @@ The one exception is **optional online AI** (`src/main/ai/`): the user can turn 
 | `npm run build` | Bundle main/preload/renderer into `out/` |
 | `npm run typecheck` | `tsc --noEmit` against both `tsconfig.node.json` and `tsconfig.web.json` |
 | `npm test` | Vitest unit tests (`src/**/__tests__/*.test.ts`). No network, no credentials. |
+| `OPENROUTER_KEY=sk-or-... npm run test:live` | **Paid**, opt-in integration test against the real OpenRouter API. Never runs in CI. ~$0.004 per run; it prints the cost. |
 | `npm run dist:mac:local` | Unsigned universal DMG in `release/` for local smoke-testing |
 | `npm run dist:mac` | Signed + notarized build (CI only — requires signing secrets) |
 
 There is no linter configured. `npm run typecheck`, `npm test` and `npm run build` are the correctness gates, and `.github/workflows/ci.yml` runs all three on every PR.
 
-Unit tests cover the pure, high-risk logic in the AI layer (SSE framing, provider error classification, the URL allowlist, prompt construction). Modules that import `electron` cannot be imported from a test, which is why the pure parts live in `src/main/ai/endpoints.ts` and `src/main/ai/errors.ts` rather than inside the client. Keep it that way when adding logic worth testing.
+Unit tests cover the pure, high-risk logic in the AI and memory layers (SSE framing, provider error classification, the URL allowlist, prompt construction, memory proposal validation). Modules that import `electron` cannot be imported from a test, which is why the pure parts live in `src/main/ai/endpoints.ts`, `src/main/ai/errors.ts` and `src/main/memory/validate.ts` rather than inside their clients. Keep it that way when adding logic worth testing.
+
+The native SQLite module is compiled against Electron's ABI, so it cannot load under plain-node Vitest. Database behaviour (migrations, suppression, source invalidation) is therefore not covered by the unit suite and has to be checked by running the app.
+
+`src/main/ai/__livetest__/openrouter.live.ts` is the paid integration test. It runs inside Electron against a throwaway `userData` directory and an invented fixture, so it can never touch a real journal. Run it after changing anything in the request path — it exercises the gated session, SSE parsing, ZDR routing, structured extraction and error mapping against the live API, which unit tests cannot. It is what caught the validator's search corpus drifting from the prompt.
 
 ## Architecture
 
@@ -51,14 +56,29 @@ Chat runs through one service for both providers. The renderer supplies identifi
 - `openrouterClient.ts` — chat completions and catalog. Streaming uses a real SSE parser (`sse.ts`), never the Ollama NDJSON reader.
 - `errors.ts` — maps status codes and in-stream provider errors to actionable codes. Provider bodies are inspected but never logged or shown verbatim.
 - `context.ts` — builds the system prompt. Online requests include only explicitly attached decisions; local requests may also see a title-only index of recent ones.
+- `decisionSections.ts` — **the single rendering of a decision**, shared by the prompt builder and the memory validator. If these two ever diverge, the validator rejects correct quotations as fabricated (this happened; see the live test). Never render a decision anywhere else.
 - `credentials.ts` — the API key, wrapped with `safeStorage` in its own file. Never returned over IPC and never part of a backup.
 - `settings.ts` — activation state and the consent generation counter.
 
 Rules when touching this: online is off by default and stays off through upgrade and restore; nothing beyond attached decisions goes online; failing closed on privacy routing is correct — never retry with `zdr`/`data_collection` relaxed.
 
+### Memory layer (`src/main/memory/`)
+
+A second, separately authorized online feature. Enabling online chat does not enable extraction, because extraction sends a decision automatically after a save rather than only when the user presses send.
+
+- `queue.ts` — the serialized job worker. A save enqueues and returns; saving must never depend on the network. Consent, decision revision and vault generation are rechecked before the request goes out and again before results are committed.
+- `validate.ts` — the anti-hallucination gate. A JSON schema constrains the response shape only; this checks that the quoted excerpt actually appears in the decision, and takes the source field from where the quote really is rather than from what the model claimed. Its search corpus comes from `ai/decisionSections.ts` — the same text the model was shown. Pure, so it is unit-tested.
+- `store.ts` — items, multi-source evidence, jobs, and suppression rules. Rejecting a proposal records a suppression so the same assertion is not re-proposed on the next edit.
+- `prompt.ts` — the extraction instruction and its schema. Bump `PROMPT_VERSION` on any change; jobs record the version they were queued under and are cancelled rather than committed if it moved.
+- `context.ts` — renders approved memories for a chat prompt, only for conversations that opted in.
+
+Rules when touching this: proposals are never auto-approved; no item is displayed without a verified source excerpt; backfill is always an explicit user-selected batch; and per-decision exclusion is checked both at enqueue and again at dispatch.
+
+**Extraction is zero-data-retention only, with no override.** Chat lets the user knowingly pick a model without a ZDR route, because they press send and see the disclosure each time. Extraction has no such moment — it runs by itself after every save — so a model without a ZDR provider is refused rather than offered. Do not add an escape hatch here to match chat's.
+
 ### State management
 
-Separate Zustand stores per concern in `src/renderer/store/`: `auth`, `theme`, `decisions`, `chat`, `transcription`, `commandPalette`.
+Separate Zustand stores per concern in `src/renderer/store/`: `auth`, `theme`, `decisions`, `chat`, `memory`, `transcription`, `commandPalette`.
 
 ### Path aliases
 

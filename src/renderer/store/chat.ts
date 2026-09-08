@@ -74,6 +74,20 @@ interface ChatState {
   onlineConsentConfirmed: boolean
   /** Between pressing send and the main process accepting the request. */
   sending: boolean
+  /**
+   * Whether this conversation sends approved memories.
+   *
+   * Defaults to on once the user has memory enabled and something approved.
+   * It used to default off, which made the feature look broken: you would turn
+   * memory on, watch it extract, then ask the coach what it knew and be told
+   * "nothing". Turning extraction on is already the decision that memories
+   * exist; making each conversation opt in again was a consent step the user
+   * had no reason to expect. It stays switchable per conversation, and it is
+   * always itemised in "What gets sent".
+   */
+  includeMemories: boolean
+  /** True when there is at least one approved memory to send. */
+  memoryAvailable: boolean
 
   init: () => Promise<void>
   refresh: () => Promise<void>
@@ -82,6 +96,8 @@ interface ChatState {
   setSetupView: (view: SetupView) => void
   selectModel: (provider: AiProvider, modelId: string) => void
   setAttachments: (ids: string[]) => Promise<void>
+  setIncludeMemories: (include: boolean) => void
+  refreshMemoryAvailability: () => Promise<void>
   confirmOnlineConsent: () => void
   startPull: (modelId: string) => Promise<void>
   cancelPull: (modelId: string) => Promise<void>
@@ -256,6 +272,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   conversationList: [],
   attachments: [],
   onlineConsentConfirmed: false,
+  includeMemories: false,
+  memoryAvailable: false,
   sending: false,
 
   init: async () => {
@@ -268,11 +286,29 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
     // Arriving at Chat is never "browsing the picker" — re-evaluate freely.
     set({ setupPinned: false })
+    await get().refreshMemoryAvailability()
     // Sequential, not parallel: refresh() decides which provider to land on and
     // needs the online settings that refreshOnline() fetches. Running them
     // together raced, and refresh() often read `online` as null.
     await get().refreshOnline()
     await get().refresh()
+  },
+
+  refreshMemoryAvailability: async () => {
+    try {
+      const memory = await window.api.memory.getSettings()
+      const available = memory.enabled && memory.approvedCount > 0
+      set((s) => ({
+        memoryAvailable: available,
+        // Adopt the default for a conversation that has not started yet.
+        includeMemories:
+          s.activeConversationId === null && s.messages.length === 0
+            ? available
+            : s.includeMemories
+      }))
+    } catch {
+      set({ memoryAvailable: false })
+    }
   },
 
   refreshOnline: async () => {
@@ -343,7 +379,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
       activeConversationId: null,
       attachments: [],
       onlineConsentConfirmed: false,
+      includeMemories: false,
       stage: 'chat'
+    })
+  },
+
+  setIncludeMemories: (include) => {
+    // Turning this on widens what an online thread sends, so consent for this
+    // thread has to be given again.
+    const { provider, includeMemories } = get()
+    set({
+      includeMemories: include,
+      onlineConsentConfirmed:
+        provider === 'openrouter' && include && !includeMemories
+          ? false
+          : get().onlineConsentConfirmed
     })
   },
 
@@ -395,7 +445,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streaming,
       attachments,
       activeConversationId,
-      onlineConsentConfirmed
+      onlineConsentConfirmed,
+      includeMemories
     } = get()
     if (!activeModel || streaming) return
     const trimmed = text.trim()
@@ -420,6 +471,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         modelId: activeModel,
         text: trimmed,
         attachments: { decisionIds: attachments },
+        includeMemories,
         onlineConsentConfirmed: provider === 'ollama' ? true : onlineConsentConfirmed
       })
     } catch (err) {
@@ -485,7 +537,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       activeConversationId: null,
       attachments: [],
       onlineConsentConfirmed: false,
-      sending: false
+      sending: false,
+      includeMemories: false
     })
     void get().loadConversationList()
   },
@@ -513,7 +566,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
       activeConversationId: null,
       conversationList: [],
       attachments: [],
-      onlineConsentConfirmed: false
+      onlineConsentConfirmed: false,
+      includeMemories: false,
+      memoryAvailable: false
     })
   },
 
@@ -544,6 +599,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         activeModel: meta.modelId,
         attachments: meta.attachments.decisionIds,
         onlineConsentConfirmed: meta.onlineConsentGiven,
+        includeMemories: meta.includeMemories,
         stage: 'chat'
       })
     } catch {
@@ -560,7 +616,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
           streaming: null,
           activeConversationId: null,
           attachments: [],
-          onlineConsentConfirmed: false
+          onlineConsentConfirmed: false,
+          includeMemories: false
         })
       }
       await get().loadConversationList()

@@ -19,6 +19,7 @@ interface ConversationRow {
   provider: string
   attachments: string
   online_consent: number
+  include_memories: number
   created_at: number
   updated_at: number
 }
@@ -34,7 +35,8 @@ interface ChatMessageRow {
   seq: number
 }
 
-const CONVERSATION_COLUMNS = `id, title, model_id, provider, attachments, online_consent, created_at, updated_at`
+const CONVERSATION_COLUMNS = `id, title, model_id, provider, attachments, online_consent,
+                              include_memories, created_at, updated_at`
 
 function parseAttachments(raw: string): AttachmentScope {
   try {
@@ -54,6 +56,7 @@ function rowToMeta(row: ConversationRow): ConversationMeta {
     modelId: row.model_id,
     attachments: parseAttachments(row.attachments),
     onlineConsentGiven: row.online_consent === 1,
+    includeMemories: row.include_memories === 1,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   }
@@ -82,20 +85,24 @@ export function createConversation(
     provider: AiProvider
     modelId: string
     attachments: AttachmentScope
+    includeMemories: boolean
   }
 ): ConversationMeta {
   const id = randomUUID()
   const now = Date.now()
   db.prepare(
     `INSERT INTO conversations
-       (id, title, model_id, provider, attachments, online_consent, created_at, updated_at)
-     VALUES (@id, @title, @modelId, @provider, @attachments, 0, @createdAt, @updatedAt)`
+       (id, title, model_id, provider, attachments, online_consent, include_memories,
+        created_at, updated_at)
+     VALUES (@id, @title, @modelId, @provider, @attachments, 0, @includeMemories,
+             @createdAt, @updatedAt)`
   ).run({
     id,
     title: params.title,
     modelId: params.modelId,
     provider: params.provider,
     attachments: JSON.stringify(params.attachments.decisionIds),
+    includeMemories: params.includeMemories ? 1 : 0,
     createdAt: now,
     updatedAt: now
   })
@@ -106,6 +113,7 @@ export function createConversation(
     modelId: params.modelId,
     attachments: params.attachments,
     onlineConsentGiven: false,
+    includeMemories: params.includeMemories,
     createdAt: now,
     updatedAt: now
   }
@@ -217,6 +225,17 @@ export function setConversationProvider(
   db.prepare('UPDATE conversations SET provider = ?, model_id = ? WHERE id = ?').run(
     provider,
     modelId,
+    conversationId
+  )
+}
+
+export function setConversationIncludeMemories(
+  db: DB,
+  conversationId: string,
+  include: boolean
+): void {
+  db.prepare('UPDATE conversations SET include_memories = ? WHERE id = ?').run(
+    include ? 1 : 0,
     conversationId
   )
 }

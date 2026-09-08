@@ -37,6 +37,7 @@ interface FormState {
   migratedFromLegacy: boolean
   rangeOfOutcomes: string
   expectedOutcome: string
+  memoryExcluded: boolean
 }
 
 function makeBlankOption(chosen = false): DecisionOption {
@@ -93,7 +94,8 @@ function emptyForm(): FormState {
     options: [makeBlankOption(), makeBlankOption()],
     migratedFromLegacy: false,
     rangeOfOutcomes: '',
-    expectedOutcome: ''
+    expectedOutcome: '',
+    memoryExcluded: false
   }
 }
 
@@ -123,7 +125,8 @@ function decisionToForm(d: Decision): FormState {
     options,
     migratedFromLegacy,
     rangeOfOutcomes: d.rangeOfOutcomes,
-    expectedOutcome: d.expectedOutcome
+    expectedOutcome: d.expectedOutcome,
+    memoryExcluded: d.memoryExcluded
   }
 }
 
@@ -144,7 +147,8 @@ function formToInput(f: FormState): DecisionCreateInput {
     complications: f.complications,
     alternatives,
     rangeOfOutcomes: f.rangeOfOutcomes,
-    expectedOutcome: f.expectedOutcome
+    expectedOutcome: f.expectedOutcome,
+    memoryExcluded: f.memoryExcluded
   }
 }
 
@@ -217,6 +221,7 @@ export default function DecisionForm({ mode }: { mode: Mode }) {
       a.complications !== form.complications ||
       a.rangeOfOutcomes !== form.rangeOfOutcomes ||
       a.expectedOutcome !== form.expectedOutcome ||
+      a.memoryExcluded !== form.memoryExcluded ||
       JSON.stringify(a.mentalState) !== JSON.stringify(form.mentalState) ||
       JSON.stringify(a.options) !== JSON.stringify(form.options)
     )
@@ -446,6 +451,11 @@ export default function DecisionForm({ mode }: { mode: Mode }) {
                 rows={5}
               />
             </Field>
+
+            <MemoryExclusionField
+              excluded={form.memoryExcluded}
+              onChange={(v) => patch('memoryExcluded', v)}
+            />
           </Card>
         )}
       </div>
@@ -880,5 +890,43 @@ export function ConfirmModal({
         </div>
       </div>
     </div>
+  )
+}
+
+/**
+ * Per-decision opt-out, offered before the entry is saved. Only shown when
+ * memory extraction is actually on, so the form stays uncluttered otherwise.
+ */
+function MemoryExclusionField({
+  excluded,
+  onChange
+}: {
+  excluded: boolean
+  onChange: (next: boolean) => void
+}) {
+  const [memoryOn, setMemoryOn] = useState(false)
+
+  useEffect(() => {
+    void window.api.memory
+      .getSettings()
+      .then((s) => setMemoryOn(s.enabled))
+      .catch(() => setMemoryOn(false))
+  }, [])
+
+  if (!memoryOn && !excluded) return null
+
+  return (
+    <label className="mt-2 flex cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-bg px-3.5 py-3">
+      <input
+        type="checkbox"
+        checked={excluded}
+        onChange={(e) => onChange(e.target.checked)}
+        className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-[rgb(var(--accent))]"
+      />
+      <span className="text-[12.5px] leading-relaxed text-text-muted">
+        <span className="font-medium text-text">Keep this one out of memory.</span> It will not be
+        sent for memory extraction, now or later. Everything else about the entry works normally.
+      </span>
+    </label>
   )
 }

@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:live": "esbuild src/main/ai/__livetest__/openrouter.live.ts --bundle --platform=node --format=cjs --target=node20 --external:electron --alias:@shared=./src/shared --outfile=node_modules/.cache/openrouter.live.js && electron node_modules/.cache/openrouter.live.js",
     "postinstall": "electron-builder install-app-deps",
     "dist:mac": "npm run build && electron-builder --mac",
     "dist:mac:local": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac -c.mac.identity=null -c.mac.notarize=false"

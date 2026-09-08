@@ -175,6 +175,8 @@ export interface ConversationMeta {
   attachments: AttachmentScope
   /** True once a message in this thread has actually been sent online. */
   onlineConsentGiven: boolean
+  /** Whether approved memories are sent with this conversation. Off by default. */
+  includeMemories: boolean
   createdAt: number
   updatedAt: number
 }
@@ -194,6 +196,8 @@ export interface PayloadPreview {
   withinBudget: boolean
   /** Estimated prompt cost in USD at catalog rates. Null when unknown. */
   estimatedPromptCostUsd: number | null
+  /** True when approved memories are part of this payload. */
+  memoriesIncluded: boolean
 }
 
 export interface SendChatParams {
@@ -202,6 +206,7 @@ export interface SendChatParams {
   modelId: string
   text: string
   attachments: AttachmentScope
+  includeMemories: boolean
   /** Set once the user has reviewed the online disclosure for this thread. */
   onlineConsentConfirmed: boolean
 }

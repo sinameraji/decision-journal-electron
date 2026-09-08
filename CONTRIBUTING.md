@@ -31,6 +31,8 @@ First launch walks you through creating a 6-digit PIN. Two sample decisions are 
 | `npm run dev` | Start electron-vite in dev mode with HMR |
 | `npm run build` | Bundle main / preload / renderer into `out/` |
 | `npm run typecheck` | Run `tsc --noEmit` against both `tsconfig.node.json` and `tsconfig.web.json` |
+| `npm test` | Run the unit tests. No network, no credentials — this is what CI runs |
+| `OPENROUTER_KEY=sk-or-... npm run test:live` | **Costs money.** Integration test against the real OpenRouter API using *your own* key (~$0.004/run, printed at the end). Hard-capped at $0.25 per run; override with `OPENROUTER_MAX_SPEND`. Opt-in, never in CI. Run it if you touch anything in the online request path |
 | `npm run dist:mac:local` | Build an **unsigned** universal DMG in `release/` — handy for smoke-testing packaged builds, but macOS Gatekeeper will flag it |
 | `npm run dist:mac` | Signed + notarized build. Only runs in CI — requires signing credentials |
 

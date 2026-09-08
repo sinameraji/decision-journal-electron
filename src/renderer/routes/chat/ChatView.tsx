@@ -7,6 +7,7 @@ import {
   ArrowUp,
   Eraser,
   Eye,
+  Brain,
   Globe,
   Laptop,
   Paperclip,
@@ -32,6 +33,9 @@ export default function ChatView() {
   const attachments = useChatStore((s) => s.attachments)
   const activeConversationId = useChatStore((s) => s.activeConversationId)
   const onlineConsentConfirmed = useChatStore((s) => s.onlineConsentConfirmed)
+  const includeMemories = useChatStore((s) => s.includeMemories)
+  const setIncludeMemories = useChatStore((s) => s.setIncludeMemories)
+  const memoryAvailable = useChatStore((s) => s.memoryAvailable)
   const sendMessage = useChatStore((s) => s.sendMessage)
   const stopStreaming = useChatStore((s) => s.stopStreaming)
   const clearConversation = useChatStore((s) => s.clearConversation)
@@ -152,6 +156,27 @@ export default function ChatView() {
             ? 'Attach decisions'
             : `${attachments.length} decision${attachments.length === 1 ? '' : 's'} attached`}
         </button>
+        {memoryAvailable && (
+          <button
+            type="button"
+            onClick={() => setIncludeMemories(!includeMemories)}
+            aria-pressed={includeMemories}
+            className={[
+              'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[11.5px]',
+              includeMemories
+                ? 'border-[rgb(var(--accent))] bg-[rgb(var(--accent))] text-accent-text dark:border-border dark:bg-bg-elevated dark:text-text'
+                : 'border-border bg-bg text-text-muted hover:text-text'
+            ].join(' ')}
+            title={
+              includeMemories
+                ? 'Your approved memories are sent with this conversation'
+                : 'This conversation is not sending your approved memories'
+            }
+          >
+            <Brain size={12} strokeWidth={2} />
+            {includeMemories ? 'Using memories' : 'Memories off for this chat'}
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setReview('preview')}
@@ -253,6 +278,7 @@ export default function ChatView() {
           modelId={activeModel}
           conversationId={activeConversationId}
           attachments={attachments}
+          includeMemories={includeMemories}
           pendingText={input}
           onConfirm={review === 'consent' ? handleConfirmedSend : null}
           onClose={() => setReview(null)}
@@ -270,6 +296,9 @@ function EmptyState({ online, onAttach }: { online: boolean; onAttach: () => voi
   ]
   const sendMessage = useChatStore((s) => s.sendMessage)
   const onlineConsentConfirmed = useChatStore((s) => s.onlineConsentConfirmed)
+  const includeMemories = useChatStore((s) => s.includeMemories)
+  const setIncludeMemories = useChatStore((s) => s.setIncludeMemories)
+  const memoryAvailable = useChatStore((s) => s.memoryAvailable)
   const canQuickSend = !online || onlineConsentConfirmed
 
   return (

@@ -14,8 +14,11 @@
 import type Database from 'better-sqlite3-multiple-ciphers'
 import type { AiProvider } from '@shared/ai'
 import type { Decision } from '@shared/ipc-contract'
-import { parseAlternatives } from '@shared/ipc-contract'
 import { getDecision, listDecisions } from '../db/decisions'
+import { formatDate, renderDecision } from './decisionSections'
+import { renderApprovedMemories } from '../memory/context'
+
+export { renderDecision } from './decisionSections'
 
 const LOCAL_INDEX_LIMIT = 15
 const LOCAL_INDEX_SNIPPET = 240
@@ -42,70 +45,18 @@ const LOCAL_MODE = `Processing mode: this model is running locally on the user's
 
 const ONLINE_MODE = `Processing mode: this conversation is being processed online by a model the user selected through OpenRouter, using the user's own API key. The user explicitly enabled this and chose which decisions to attach. Only the attached decisions below were sent — the rest of their journal was not.`
 
-function formatDate(ms: number | null): string {
-  if (!ms) return 'not set'
-  return new Date(ms).toISOString().slice(0, 10)
-}
-
 function truncate(s: string, n: number): string {
   const trimmed = s.trim().replace(/\s+/g, ' ')
   if (trimmed.length <= n) return trimmed
   return trimmed.slice(0, n - 1).trimEnd() + '…'
 }
 
-function field(label: string, value: string): string | null {
-  const trimmed = value.trim()
-  if (!trimmed) return null
-  return `${label}: ${trimmed}`
-}
-
-function renderAlternatives(raw: string): string | null {
-  const parsed = parseAlternatives(raw)
-  if (parsed.kind === 'empty') return null
-  if (parsed.kind === 'legacy') return `Options considered: ${parsed.text.trim()}`
-
-  const lines = parsed.options.map((o, i) => {
-    const mark = o.chosen ? 'CHOSEN' : 'not chosen'
-    const note = o.note.trim() ? ` — ${o.note.trim()}` : ''
-    return `  ${i + 1}. [${mark}] ${o.name.trim()}${note}`
-  })
-  return `Options considered:\n${lines.join('\n')}`
-}
-
-/** Renders one decision in full, with review material clearly separated. */
-export function renderDecision(d: Decision, index: number): string {
-  const head = `--- Decision ${index}: ${d.title.trim() || '(untitled)'} ---`
-  const parts: (string | null)[] = [
-    `Decided on: ${formatDate(d.decidedAt)}`,
-    d.reviewAt ? `Review due: ${formatDate(d.reviewAt)}` : null,
-    d.mentalState.length > 0 ? `Mental state when deciding: ${d.mentalState.join(', ')}` : null,
-    field('Situation', d.situation),
-    field('Problem statement', d.problemStatement),
-    field('Variables in play', d.variables),
-    field('Complications', d.complications),
-    renderAlternatives(d.alternatives),
-    field('Range of outcomes considered', d.rangeOfOutcomes),
-    field("Expected outcome (the user's own forecast, recorded before the result)", d.expectedOutcome)
-  ]
-
-  const reviewed = d.reviewedAt !== null && (d.outcome.trim() || d.lessonsLearned.trim())
-  if (reviewed) {
-    parts.push(
-      `\n[Written later, at review on ${formatDate(d.reviewedAt)} — this was NOT known when the decision was made]`
-    )
-    parts.push(field('What actually happened', d.outcome))
-    parts.push(field('Lesson the user drew', d.lessonsLearned))
-  } else {
-    parts.push('\n[Not reviewed yet — the outcome is still unknown.]')
-  }
-
-  return [head, ...parts.filter((p): p is string => p !== null)].join('\n')
-}
-
 export interface BuildPromptOptions {
   db: Database.Database | null
   provider: AiProvider
   attachedDecisionIds: string[]
+  /** Per-conversation opt-in to sending approved memories. Defaults to off. */
+  includeMemories?: boolean
 }
 
 export interface BuiltPrompt {
@@ -113,6 +64,8 @@ export interface BuiltPrompt {
   attachedTitles: string[]
   /** Decision ids that were requested but no longer exist. */
   missingIds: string[]
+  /** True when approved memories were actually added to the prompt. */
+  memoriesIncluded: boolean
 }
 
 export function buildSystemPrompt(opts: BuildPromptOptions): BuiltPrompt {
@@ -122,7 +75,12 @@ export function buildSystemPrompt(opts: BuildPromptOptions): BuiltPrompt {
 
   if (!db) {
     sections.push('The journal is locked, so no decisions are available.')
-    return { systemPrompt: sections.join('\n\n'), attachedTitles: [], missingIds: [] }
+    return {
+      systemPrompt: sections.join('\n\n'),
+      attachedTitles: [],
+      missingIds: [],
+      memoriesIncluded: false
+    }
   }
 
   const attached: Decision[] = []
@@ -161,10 +119,20 @@ export function buildSystemPrompt(opts: BuildPromptOptions): BuiltPrompt {
     }
   }
 
+  let memoriesIncluded = false
+  if (opts.includeMemories) {
+    const memories = renderApprovedMemories(db)
+    if (memories) {
+      sections.push(memories)
+      memoriesIncluded = true
+    }
+  }
+
   return {
     systemPrompt: sections.join('\n\n'),
     attachedTitles: attached.map((d) => d.title),
-    missingIds
+    missingIds,
+    memoriesIncluded
   }
 }
 

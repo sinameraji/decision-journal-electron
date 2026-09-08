@@ -7,6 +7,7 @@ interface Props {
   modelId: string
   conversationId: string | null
   attachments: string[]
+  includeMemories: boolean
   pendingText: string
   /** Null when opened as a plain preview rather than as the consent gate. */
   onConfirm: (() => void) | null
@@ -23,6 +24,7 @@ export default function SendReviewModal({
   modelId,
   conversationId,
   attachments,
+  includeMemories,
   pendingText,
   onConfirm,
   onClose
@@ -39,6 +41,7 @@ export default function SendReviewModal({
         provider,
         modelId,
         attachments: { decisionIds: attachments },
+        includeMemories,
         pendingText
       })
       .then((res) => {
@@ -49,7 +52,7 @@ export default function SendReviewModal({
     return () => {
       cancelled = true
     }
-  }, [conversationId, provider, modelId, attachments, pendingText])
+  }, [conversationId, provider, modelId, attachments, includeMemories, pendingText])
 
   const online = provider === 'openrouter'
 
@@ -119,6 +122,12 @@ export default function SendReviewModal({
                     ))}
                   </ul>
                 )}
+              </Stat>
+
+              <Stat label="Approved memories">
+                {preview.memoriesIncluded
+                  ? 'Included — the memories you approved are sent with this message.'
+                  : 'Not included.'}
               </Stat>
 
               <Stat label="Messages in this thread">

@@ -4,6 +4,7 @@ import {
   Clock,
   BarChart3,
   MessageSquare,
+  Brain,
   Settings as SettingsIcon
 } from 'lucide-react'
 
@@ -13,5 +14,6 @@ export const NAV = [
   { to: '/reviews', label: 'Reviews', Icon: Clock },
   { to: '/analytics', label: 'Analytics', Icon: BarChart3 },
   { to: '/chat', label: 'Chat', Icon: MessageSquare },
+  { to: '/memory', label: 'Memory', Icon: Brain },
   { to: '/settings', label: 'Settings', Icon: SettingsIcon }
 ] as const

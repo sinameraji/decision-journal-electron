@@ -7,10 +7,12 @@ import EditDecision from './routes/EditDecision'
 import Reviews from './routes/Reviews'
 import Analytics from './routes/Analytics'
 import Chat from './routes/chat'
+import Memory from './routes/Memory'
 import Settings from './routes/Settings'
 import AppShell from './components/AppShell'
 import { useAuthStore } from './store/auth'
 import { useChatStore } from './store/chat'
+import { useMemoryStore } from './store/memory'
 import { useThemeStore } from './store/theme'
 
 export default function App() {
@@ -24,7 +26,10 @@ export default function App() {
   }, [initTheme, refreshStatus])
 
   useEffect(() => {
-    if (!unlocked) useChatStore.getState().reset()
+    if (!unlocked) {
+      useChatStore.getState().reset()
+      useMemoryStore.getState().reset()
+    }
   }, [unlocked])
 
   if (loading || !status || !themeReady) {
@@ -45,6 +50,7 @@ export default function App() {
         <Route path="/reviews" element={<Reviews />} />
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/chat" element={<Chat />} />
+        <Route path="/memory" element={<Memory />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="*" element={<Navigate to="/decisions" replace />} />
       </Routes>

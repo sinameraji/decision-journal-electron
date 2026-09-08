@@ -42,7 +42,8 @@ That's it. No sign-up, no email, no account to create.
 - **Reviews** — come back to past decisions and log how things actually turned out. This is where the real learning happens.
 - **Analytics** — see patterns in your own decision quality over time: timeline, review status, mental-state distribution, and mental-state trends.
 - **Chat** — an AI coach to talk through past decisions, check for bias, and think through opportunity costs. By default it runs a local model via Ollama, entirely on your machine. You can optionally enable an online model through your own OpenRouter account; in that mode only the messages you type and the decisions you explicitly attach are sent.
-- **Settings** — toggle Touch ID, manage Whisper models, restore from backup, check for app updates, lock instantly.
+- **Memory** — optional, separately enabled. After you save a decision, an online model proposes short, evidence-backed notes about what you said you want, what constrains you, what you chose, and what you learned. Every proposal shows the exact words it came from, and nothing is used until you approve it.
+- **Settings** — toggle Touch ID, manage Whisper models, turn optional online AI and memory on or off, restore from backup, check for app updates, lock instantly.
 
 ## What your data looks like on disk
 
@@ -83,6 +84,19 @@ This is the only feature that can send journal content off your Mac, so it's wor
 - **What we can't promise.** OpenRouter still records request metadata, and the downstream provider has its own policy. This is a provider-policy restriction, not on-device processing and not end-to-end encryption against the model provider. Once a message is sent, it cannot be recalled.
 - **Turning it off** cancels anything in flight and revokes consent, so a reply that arrives late is discarded rather than saved.
 
+### If you also turn on memory
+
+Memory is a second switch, deliberately separate from online chat, because it sends a decision automatically after you save it rather than only when you press send.
+
+- **New decisions only.** Enabling it does not touch your existing entries. Backfilling past decisions is a separate action where you pick the entries and see an estimated cost first.
+- **You can exclude an entry** before saving it, and that exclusion is honoured for good.
+- **Proposals are not memories.** Extraction produces suggestions you approve, edit, or reject. Rejecting one also stops it being suggested again on the next edit.
+- **Every proposal is checked locally.** A memory is only shown if the quote it cites actually appears in the decision it claims to come from — a model that invents supporting text gets its proposal discarded rather than displayed.
+- **What it will not record.** It is instructed not to infer age, gender, ethnicity, health, religion, politics, wealth, or personality traits, and observations are stored as evidence labels ("stated outright", "tentative") rather than as invented confidence percentages. This is a design constraint, not a guarantee about model behaviour — review what it proposes.
+- **Approving is not sending.** An approved memory still only reaches a chat if that specific conversation has memories switched on.
+- **Editing a decision** marks anything derived from the old text as needing a recheck. Deleting a decision removes memories that had no other support.
+- **"Forget everything"** deletes all memories and proposals, cancels the queue, and turns extraction off. It cannot un-send what a provider already received, and chat transcripts you already saved may still quote the old material.
+
 ## Privacy & security in plain English
 
 - **Offline for your data by default.** See [Network activity](#network-activity) above for the full list of exceptions. App update checks and Whisper model downloads never carry journal content. Optional online AI can — but only after you enable it, add your own API key, and attach specific decisions to a chat.
@@ -99,6 +113,7 @@ This is the only feature that can send journal content off your Mac, so it's wor
 - Analytics — decision timeline, review status, mental-state distribution, mental-state over time
 - Local AI coach via Ollama — chat with your past decisions, ask for second opinions, get bias checks, all running on-device
 - Optional online AI via your own OpenRouter key — off by default, zero-data-retention routing, and only the decisions you attach are sent
+- Optional AI memory — evidence-backed notes you approve before they are ever reused, stored encrypted on-device
 - On-device voice transcription via Whisper — dictate decisions hands-free, audio never leaves your Mac
 - Encrypted backup and restore
 - Touch ID unlock
