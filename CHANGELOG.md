@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.7.0](https://github.com/sinameraji/decision-journal-electron/compare/v0.6.0...v0.7.0) (2026-09-08)
+
+
+### Features
+
+* decision lenses, reachable from chat and from a decision ([7b029a8](https://github.com/sinameraji/decision-journal-electron/commit/7b029a802102ec3099d30525937ecda8ff88361c))
+* decision lenses, reachable from chat and from a decision ([b8d44d6](https://github.com/sinameraji/decision-journal-electron/commit/b8d44d6a47ab340e706718a4ee14d955f4bceb0a))
+* optional AI memory with evidence-backed, user-approved proposals ([c4034cb](https://github.com/sinameraji/decision-journal-electron/commit/c4034cbf1424557740b259251816b02ed2ccd24d))
+* optional AI memory with evidence-backed, user-approved proposals ([7b286ee](https://github.com/sinameraji/decision-journal-electron/commit/7b286eeb5ef1e4163d1a59e36aa1c4460f4cdcb3))
+* optional online AI chat via OpenRouter (off by default) ([26e588d](https://github.com/sinameraji/decision-journal-electron/commit/26e588da834a878b8f8a5ea50d4dc89ce3d65573))
+* optional online AI chat via OpenRouter (off by default) ([eec1214](https://github.com/sinameraji/decision-journal-electron/commit/eec1214867371529e219b27c0294ef1dafa54aef))
+
+
+### Bug Fixes
+
+* chat UX and reliability fixes found by testing the app ([2a66448](https://github.com/sinameraji/decision-journal-electron/commit/2a664486bd80d4d40e589a188a36a864f722b11b))
+* **ci:** install setuptools so node-gyp can build native modules ([59de382](https://github.com/sinameraji/decision-journal-electron/commit/59de3825f0abd26278bfb9caf23e614b99d3be58))
+* **memory:** extraction runs only on zero-data-retention models ([5220830](https://github.com/sinameraji/decision-journal-electron/commit/522083081ba00d5a2ce37687dc1ed39f7a45884f))
+* **memory:** make the feature usable, found by testing it end to end ([81904e1](https://github.com/sinameraji/decision-journal-electron/commit/81904e1104886ac6bde0beff8ff7babb782d88d4))
+* **memory:** search the same text the model was shown ([05a33e6](https://github.com/sinameraji/decision-journal-electron/commit/05a33e68200db21255d249c6116508d4571589eb))
+* **test:** enforce the live test's spend cap instead of only reporting it ([ccbdf2a](https://github.com/sinameraji/decision-journal-electron/commit/ccbdf2a9a3d8d3535567d3e84418bf4b1048ec30))
+
 ## [0.6.0](https://github.com/sinameraji/decision-journal-electron/compare/v0.5.0...v0.6.0) (2026-04-21)
 
 
