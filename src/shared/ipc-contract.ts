@@ -12,6 +12,15 @@ import type {
   SendChatResult,
   StoredChatMessage
 } from './ai'
+import type {
+  MemoryActionResult,
+  MemoryBackfillEstimate,
+  MemoryCategory,
+  MemoryItem,
+  MemoryJob,
+  MemorySettings,
+  MemoryState
+} from './memory'
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 
@@ -141,6 +150,8 @@ export interface Decision {
   createdAt: number
   updatedAt: number
   isSample: 0 | 1
+  /** Opt out of online memory extraction for this entry. */
+  memoryExcluded: boolean
 }
 
 export type DecisionCreateInput = Pick<
@@ -156,6 +167,7 @@ export type DecisionCreateInput = Pick<
   | 'alternatives'
   | 'rangeOfOutcomes'
   | 'expectedOutcome'
+  | 'memoryExcluded'
 >
 
 export type DecisionUpdateInput = Partial<DecisionCreateInput>
@@ -270,6 +282,8 @@ export interface Api {
     update(id: string, patch: DecisionUpdateInput): Promise<Decision>
     review(id: string, input: DecisionReviewInput): Promise<Decision>
     delete(id: string): Promise<void>
+    /** Per-decision opt-out from online memory extraction. */
+    setMemoryExcluded(id: string, excluded: boolean): Promise<void>
   }
   conversations: {
     list(): Promise<ConversationSummary[]>
@@ -277,6 +291,24 @@ export interface Api {
     messages(id: string): Promise<StoredChatMessage[]>
     setAttachments(id: string, attachments: AttachmentScope): Promise<void>
     delete(id: string): Promise<void>
+  }
+  memory: {
+    getSettings(): Promise<MemorySettings>
+    /** Requires online AI to already be on; enabling chat does not enable this. */
+    setEnabled(enabled: boolean): Promise<MemorySettings>
+    setModel(modelId: string): Promise<MemorySettings>
+    list(states?: MemoryState[]): Promise<MemoryItem[]>
+    jobs(): Promise<MemoryJob[]>
+    approve(id: string): Promise<MemoryActionResult>
+    /** Also suppresses the statement so it is not re-proposed on the next edit. */
+    reject(id: string): Promise<MemoryActionResult>
+    delete(id: string): Promise<MemoryActionResult>
+    updateStatement(id: string, statement: string): Promise<MemoryActionResult>
+    add(category: MemoryCategory, statement: string): Promise<MemoryActionResult>
+    forgetAll(): Promise<MemoryActionResult>
+    estimateBackfill(decisionIds: string[]): Promise<MemoryBackfillEstimate>
+    runBackfill(decisionIds: string[]): Promise<MemoryActionResult>
+    onChanged(cb: () => void): () => void
   }
   ai: {
     /** Non-secret settings. Never returns the stored API key. */
@@ -297,6 +329,7 @@ export interface Api {
       provider: AiProvider
       modelId: string
       attachments: AttachmentScope
+      includeMemories: boolean
       pendingText: string
     }): Promise<
       { ok: true; preview: PayloadPreview } | { ok: false; code: AiErrorCode; message: string }

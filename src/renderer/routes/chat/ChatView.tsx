@@ -7,6 +7,7 @@ import {
   ArrowUp,
   Eraser,
   Eye,
+  Brain,
   Globe,
   Laptop,
   Paperclip,
@@ -32,6 +33,9 @@ export default function ChatView() {
   const attachments = useChatStore((s) => s.attachments)
   const activeConversationId = useChatStore((s) => s.activeConversationId)
   const onlineConsentConfirmed = useChatStore((s) => s.onlineConsentConfirmed)
+  const includeMemories = useChatStore((s) => s.includeMemories)
+  const setIncludeMemories = useChatStore((s) => s.setIncludeMemories)
+  const [memoryAvailable, setMemoryAvailable] = useState(false)
   const sendMessage = useChatStore((s) => s.sendMessage)
   const stopStreaming = useChatStore((s) => s.stopStreaming)
   const clearConversation = useChatStore((s) => s.clearConversation)
@@ -67,6 +71,14 @@ export default function ChatView() {
   useEffect(() => {
     textareaRef.current?.focus()
   }, [activeModel])
+
+  useEffect(() => {
+    // The toggle only makes sense once something has actually been approved.
+    void window.api.memory
+      .getSettings()
+      .then((s) => setMemoryAvailable(s.approvedCount > 0))
+      .catch(() => setMemoryAvailable(false))
+  }, [])
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -152,6 +164,23 @@ export default function ChatView() {
             ? 'Attach decisions'
             : `${attachments.length} decision${attachments.length === 1 ? '' : 's'} attached`}
         </button>
+        {memoryAvailable && (
+          <button
+            type="button"
+            onClick={() => setIncludeMemories(!includeMemories)}
+            aria-pressed={includeMemories}
+            className={[
+              'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[11.5px]',
+              includeMemories
+                ? 'border-[rgb(var(--accent))] bg-[rgb(var(--accent))] text-accent-text dark:border-border dark:bg-bg-elevated dark:text-text'
+                : 'border-border bg-bg text-text-muted hover:text-text'
+            ].join(' ')}
+            title="Send your approved memories with this conversation"
+          >
+            <Brain size={12} strokeWidth={2} />
+            {includeMemories ? 'Memories on' : 'Memories off'}
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setReview('preview')}
@@ -253,6 +282,7 @@ export default function ChatView() {
           modelId={activeModel}
           conversationId={activeConversationId}
           attachments={attachments}
+          includeMemories={includeMemories}
           pendingText={input}
           onConfirm={review === 'consent' ? handleConfirmedSend : null}
           onClose={() => setReview(null)}
@@ -270,6 +300,9 @@ function EmptyState({ online, onAttach }: { online: boolean; onAttach: () => voi
   ]
   const sendMessage = useChatStore((s) => s.sendMessage)
   const onlineConsentConfirmed = useChatStore((s) => s.onlineConsentConfirmed)
+  const includeMemories = useChatStore((s) => s.includeMemories)
+  const setIncludeMemories = useChatStore((s) => s.setIncludeMemories)
+  const [memoryAvailable, setMemoryAvailable] = useState(false)
   const canQuickSend = !online || onlineConsentConfirmed
 
   return (

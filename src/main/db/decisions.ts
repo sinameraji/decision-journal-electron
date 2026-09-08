@@ -29,6 +29,7 @@ interface DecisionRow {
   created_at: number
   updated_at: number | null
   is_sample: number
+  memory_excluded: number
 }
 
 function parseMentalState(raw: string): MentalState[] {
@@ -62,14 +63,16 @@ function rowToDecision(row: DecisionRow): Decision {
     reviewedAt: row.reviewed_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at ?? row.created_at,
-    isSample: row.is_sample ? 1 : 0
+    isSample: row.is_sample ? 1 : 0,
+    memoryExcluded: row.memory_excluded === 1
   }
 }
 
 const SELECT_ALL = `
   SELECT id, title, decided_at, review_at, mental_state, situation, problem_statement,
          variables, complications, alternatives, range_of_outcomes, expected_outcome,
-         outcome, lessons_learned, reviewed_at, created_at, updated_at, is_sample
+         outcome, lessons_learned, reviewed_at, created_at, updated_at, is_sample,
+         memory_excluded
   FROM decisions
 `
 
@@ -92,11 +95,12 @@ export function createDecision(db: DB, input: DecisionCreateInput, isSample = 0)
     `INSERT INTO decisions (
        id, title, decided_at, review_at, mental_state, situation, problem_statement,
        variables, complications, alternatives, range_of_outcomes, expected_outcome,
-       outcome, lessons_learned, reviewed_at, created_at, updated_at, is_sample, body
+       outcome, lessons_learned, reviewed_at, created_at, updated_at, is_sample, body,
+       memory_excluded
      ) VALUES (
        @id, @title, @decidedAt, @reviewAt, @mentalState, @situation, @problemStatement,
        @variables, @complications, @alternatives, @rangeOfOutcomes, @expectedOutcome,
-       '', '', NULL, @createdAt, @updatedAt, @isSample, ''
+       '', '', NULL, @createdAt, @updatedAt, @isSample, '', @memoryExcluded
      )`
   ).run({
     id,
@@ -113,7 +117,8 @@ export function createDecision(db: DB, input: DecisionCreateInput, isSample = 0)
     expectedOutcome: input.expectedOutcome ?? '',
     createdAt: now,
     updatedAt: now,
-    isSample
+    isSample,
+    memoryExcluded: input.memoryExcluded ? 1 : 0
   })
   const created = getDecision(db, id)
   if (!created) throw new Error('Failed to read back created decision')
@@ -131,7 +136,8 @@ const PATCH_COLUMNS: Record<keyof DecisionUpdateInput, string> = {
   complications: 'complications',
   alternatives: 'alternatives',
   rangeOfOutcomes: 'range_of_outcomes',
-  expectedOutcome: 'expected_outcome'
+  expectedOutcome: 'expected_outcome',
+  memoryExcluded: 'memory_excluded'
 }
 
 export function updateDecision(db: DB, id: string, patch: DecisionUpdateInput): Decision {
@@ -145,6 +151,9 @@ export function updateDecision(db: DB, id: string, patch: DecisionUpdateInput): 
     if (key === 'mentalState') {
       sets.push(`${col} = @${key}`)
       values[key] = JSON.stringify(value ?? [])
+    } else if (key === 'memoryExcluded') {
+      sets.push(`${col} = @${key}`)
+      values[key] = value ? 1 : 0
     } else {
       sets.push(`${col} = @${key}`)
       values[key] = value
@@ -211,7 +220,8 @@ export function searchDecisions(db: DB, rawQuery: string): Decision[] {
       `SELECT d.id, d.title, d.decided_at, d.review_at, d.mental_state, d.situation,
               d.problem_statement, d.variables, d.complications, d.alternatives,
               d.range_of_outcomes, d.expected_outcome, d.outcome, d.lessons_learned,
-              d.reviewed_at, d.created_at, d.updated_at, d.is_sample
+              d.reviewed_at, d.created_at, d.updated_at, d.is_sample,
+              d.memory_excluded
        FROM decisions d
        JOIN decisions_fts ON decisions_fts.rowid = d.rowid
        WHERE decisions_fts MATCH ?

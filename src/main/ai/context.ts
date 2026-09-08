@@ -16,6 +16,7 @@ import type { AiProvider } from '@shared/ai'
 import type { Decision } from '@shared/ipc-contract'
 import { parseAlternatives } from '@shared/ipc-contract'
 import { getDecision, listDecisions } from '../db/decisions'
+import { renderApprovedMemories } from '../memory/context'
 
 const LOCAL_INDEX_LIMIT = 15
 const LOCAL_INDEX_SNIPPET = 240
@@ -106,6 +107,8 @@ export interface BuildPromptOptions {
   db: Database.Database | null
   provider: AiProvider
   attachedDecisionIds: string[]
+  /** Per-conversation opt-in to sending approved memories. Defaults to off. */
+  includeMemories?: boolean
 }
 
 export interface BuiltPrompt {
@@ -113,6 +116,8 @@ export interface BuiltPrompt {
   attachedTitles: string[]
   /** Decision ids that were requested but no longer exist. */
   missingIds: string[]
+  /** True when approved memories were actually added to the prompt. */
+  memoriesIncluded: boolean
 }
 
 export function buildSystemPrompt(opts: BuildPromptOptions): BuiltPrompt {
@@ -122,7 +127,12 @@ export function buildSystemPrompt(opts: BuildPromptOptions): BuiltPrompt {
 
   if (!db) {
     sections.push('The journal is locked, so no decisions are available.')
-    return { systemPrompt: sections.join('\n\n'), attachedTitles: [], missingIds: [] }
+    return {
+      systemPrompt: sections.join('\n\n'),
+      attachedTitles: [],
+      missingIds: [],
+      memoriesIncluded: false
+    }
   }
 
   const attached: Decision[] = []
@@ -161,10 +171,20 @@ export function buildSystemPrompt(opts: BuildPromptOptions): BuiltPrompt {
     }
   }
 
+  let memoriesIncluded = false
+  if (opts.includeMemories) {
+    const memories = renderApprovedMemories(db)
+    if (memories) {
+      sections.push(memories)
+      memoriesIncluded = true
+    }
+  }
+
   return {
     systemPrompt: sections.join('\n\n'),
     attachedTitles: attached.map((d) => d.title),
-    missingIds
+    missingIds,
+    memoriesIncluded
   }
 }
 

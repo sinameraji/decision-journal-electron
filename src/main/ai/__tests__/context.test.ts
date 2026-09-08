@@ -34,6 +34,7 @@ function makeDecision(patch: Partial<Decision> = {}): Decision {
     createdAt: Date.UTC(2026, 8, 8),
     updatedAt: Date.UTC(2026, 8, 8),
     isSample: 0,
+    memoryExcluded: false,
     ...patch
   }
 }

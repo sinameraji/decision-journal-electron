@@ -20,6 +20,7 @@ import type {
   AiErrorCode,
   AiEvent,
   AiProvider,
+  AiUsage,
   AttachmentScope,
   PayloadPreview,
   SendChatParams,
@@ -34,6 +35,7 @@ import {
   getConversationMessages,
   markOnlineConsent,
   setConversationAttachments,
+  setConversationIncludeMemories,
   setConversationProvider
 } from '../db/conversations'
 import { chatStream, type ChatMessageIn } from '../ollama/client'
@@ -92,13 +94,6 @@ export function cancelAllRequests(): void {
   active.clear()
 }
 
-export function cancelRequestsForConversation(conversationId: string): void {
-  for (const [id, req] of active) {
-    if (req.conversationId === conversationId) req.controller.abort()
-    void id
-  }
-}
-
 function fail(code: AiErrorCode, message: string): SendChatResult {
   return { ok: false, code, message }
 }
@@ -123,6 +118,8 @@ interface ResolvedRequest {
   attachedTitles: string[]
   history: StoredChatMessage[]
   totalChars: number
+  includeMemories: boolean
+  memoriesIncluded: boolean
 }
 
 /**
@@ -135,6 +132,7 @@ async function resolve(
     provider: unknown
     modelId: unknown
     attachments: unknown
+    includeMemories: unknown
     pendingText: string
   },
   requireOnlineReady: boolean
@@ -163,7 +161,13 @@ async function resolve(
     }
   }
 
-  const built = buildSystemPrompt({ db, provider, attachedDecisionIds: attachments.decisionIds })
+  const includeMemories = params.includeMemories === true
+  const built = buildSystemPrompt({
+    db,
+    provider,
+    attachedDecisionIds: attachments.decisionIds,
+    includeMemories
+  })
   const history = params.conversationId
     ? getConversationMessages(db, params.conversationId)
     : []
@@ -183,7 +187,9 @@ async function resolve(
       systemPrompt: built.systemPrompt,
       attachedTitles: built.attachedTitles,
       history,
-      totalChars
+      totalChars,
+      includeMemories,
+      memoriesIncluded: built.memoriesIncluded
     }
   }
 }
@@ -195,6 +201,7 @@ export async function buildPayloadPreview(params: {
   provider: unknown
   modelId: unknown
   attachments: unknown
+  includeMemories: unknown
   pendingText: string
 }): Promise<{ ok: true; preview: PayloadPreview } | { ok: false; result: SendChatResult }> {
   const resolved = await resolve(params, false)
@@ -229,7 +236,8 @@ export async function buildPayloadPreview(params: {
       approxTokens: tokens,
       contextLimit: catalogModel?.contextLength ?? null,
       withinBudget: r.totalChars <= MAX_PROMPT_CHARS,
-      estimatedPromptCostUsd
+      estimatedPromptCostUsd,
+      memoriesIncluded: r.memoriesIncluded
     }
   }
 }
@@ -251,6 +259,7 @@ export async function sendChat(
       provider: params.provider,
       modelId: params.modelId,
       attachments: params.attachments,
+      includeMemories: params.includeMemories,
       pendingText: text
     },
     true
@@ -284,7 +293,8 @@ export async function sendChat(
       (existing.provider !== 'openrouter' || r.history.length > 0)
     const scopeChanged =
       existing != null &&
-      existing.attachments.decisionIds.join(',') !== r.attachments.decisionIds.join(',')
+      (existing.attachments.decisionIds.join(',') !== r.attachments.decisionIds.join(',') ||
+        (r.includeMemories && !existing.includeMemories))
     // Moving an existing local thread online, or widening what a thread sends,
     // means earlier local messages would now leave the device — re-confirm.
     if (!params.onlineConsentConfirmed && (expanding || (scopeChanged && existing != null))) {
@@ -304,7 +314,8 @@ export async function sendChat(
       title,
       provider: r.provider,
       modelId: r.modelId,
-      attachments: r.attachments
+      attachments: r.attachments,
+      includeMemories: r.includeMemories
     })
     conversationId = existing.id
   } else {
@@ -312,6 +323,9 @@ export async function sendChat(
       setConversationProvider(r.db, existing.id, r.provider, r.modelId)
     }
     setConversationAttachments(r.db, existing.id, r.attachments)
+    if (existing.includeMemories !== r.includeMemories) {
+      setConversationIncludeMemories(r.db, existing.id, r.includeMemories)
+    }
   }
   const convId = conversationId as string
 
@@ -366,7 +380,7 @@ async function run(
   messages: ChatMessageOut[]
 ): Promise<void> {
   let servedModel: string | null = null
-  let usage: Parameters<typeof commit>[3] = null
+  let usage: AiUsage | null = null
 
   try {
     if (!(await stillAuthorized(req))) {
@@ -466,7 +480,7 @@ function commit(
   requestId: string,
   req: ActiveRequest,
   status: 'complete' | 'interrupted',
-  usage: { promptTokens: number | null; completionTokens: number | null; costUsd: number | null } | null,
+  usage: AiUsage | null,
   servedModel: string | null
 ): void {
   const db = host?.db()

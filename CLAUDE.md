@@ -21,7 +21,9 @@ The one exception is **optional online AI** (`src/main/ai/`): the user can turn 
 
 There is no linter configured. `npm run typecheck`, `npm test` and `npm run build` are the correctness gates, and `.github/workflows/ci.yml` runs all three on every PR.
 
-Unit tests cover the pure, high-risk logic in the AI layer (SSE framing, provider error classification, the URL allowlist, prompt construction). Modules that import `electron` cannot be imported from a test, which is why the pure parts live in `src/main/ai/endpoints.ts` and `src/main/ai/errors.ts` rather than inside the client. Keep it that way when adding logic worth testing.
+Unit tests cover the pure, high-risk logic in the AI and memory layers (SSE framing, provider error classification, the URL allowlist, prompt construction, memory proposal validation). Modules that import `electron` cannot be imported from a test, which is why the pure parts live in `src/main/ai/endpoints.ts`, `src/main/ai/errors.ts` and `src/main/memory/validate.ts` rather than inside their clients. Keep it that way when adding logic worth testing.
+
+The native SQLite module is compiled against Electron's ABI, so it cannot load under plain-node Vitest. Database behaviour (migrations, suppression, source invalidation) is therefore not covered by the unit suite and has to be checked by running the app.
 
 ## Architecture
 
@@ -56,9 +58,21 @@ Chat runs through one service for both providers. The renderer supplies identifi
 
 Rules when touching this: online is off by default and stays off through upgrade and restore; nothing beyond attached decisions goes online; failing closed on privacy routing is correct — never retry with `zdr`/`data_collection` relaxed.
 
+### Memory layer (`src/main/memory/`)
+
+A second, separately authorized online feature. Enabling online chat does not enable extraction, because extraction sends a decision automatically after a save rather than only when the user presses send.
+
+- `queue.ts` — the serialized job worker. A save enqueues and returns; saving must never depend on the network. Consent, decision revision and vault generation are rechecked before the request goes out and again before results are committed.
+- `validate.ts` — the anti-hallucination gate. A JSON schema constrains the response shape only; this checks that the quoted excerpt actually appears in the decision, and takes the source field from where the quote really is rather than from what the model claimed. Pure, so it is unit-tested.
+- `store.ts` — items, multi-source evidence, jobs, and suppression rules. Rejecting a proposal records a suppression so the same assertion is not re-proposed on the next edit.
+- `prompt.ts` — the extraction instruction and its schema. Bump `PROMPT_VERSION` on any change; jobs record the version they were queued under and are cancelled rather than committed if it moved.
+- `context.ts` — renders approved memories for a chat prompt, only for conversations that opted in.
+
+Rules when touching this: proposals are never auto-approved; no item is displayed without a verified source excerpt; backfill is always an explicit user-selected batch; and per-decision exclusion is checked both at enqueue and again at dispatch.
+
 ### State management
 
-Separate Zustand stores per concern in `src/renderer/store/`: `auth`, `theme`, `decisions`, `chat`, `transcription`, `commandPalette`.
+Separate Zustand stores per concern in `src/renderer/store/`: `auth`, `theme`, `decisions`, `chat`, `memory`, `transcription`, `commandPalette`.
 
 ### Path aliases
 

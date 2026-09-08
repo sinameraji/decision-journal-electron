@@ -3,6 +3,7 @@ import { Fingerprint, Lock, Mic, Download, Trash2, Loader2, CheckCircle2, AlertT
 import PinPad from '../components/PinPad'
 import SupportModal from '../components/SupportModal'
 import OnlineAiSettings from '../components/OnlineAiSettings'
+import MemorySettingsSection from '../components/MemorySettingsSection'
 import { useAuthStore } from '../store/auth'
 import { useTranscriptionStore } from '../store/transcription'
 import type { WhisperModelInfo, UpdateStatus } from '@shared/ipc-contract'
@@ -256,6 +257,8 @@ export default function Settings() {
       </section>
 
       <OnlineAiSettings />
+
+      <MemorySettingsSection />
 
       <section className="mt-8">
         <h2 className="mb-3 text-[13px] font-semibold uppercase tracking-wide text-text-muted">

@@ -158,6 +158,78 @@ const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_chat_messages_seq
         ON chat_messages(conversation_id, seq ASC);
     `
+  },
+  {
+    // Optional AI memory. Everything here lives inside the encrypted database
+    // alongside the journal it was derived from.
+    version: 6,
+    sql: `
+      -- Per-decision opt-out, honoured before a job is ever enqueued.
+      ALTER TABLE decisions ADD COLUMN memory_excluded INTEGER NOT NULL DEFAULT 0;
+
+      -- Enabling extraction does not authorize exporting the whole profile into
+      -- every conversation, so this is per-conversation and defaults to off.
+      ALTER TABLE conversations ADD COLUMN include_memories INTEGER NOT NULL DEFAULT 0;
+
+      CREATE TABLE IF NOT EXISTS memory_items (
+        id              TEXT PRIMARY KEY,
+        category        TEXT    NOT NULL,
+        statement       TEXT    NOT NULL,
+        kind            TEXT    NOT NULL,
+        state           TEXT    NOT NULL,
+        user_authored   INTEGER NOT NULL DEFAULT 0,
+        applicable_date TEXT,
+        domain          TEXT,
+        model_id        TEXT,
+        prompt_version  INTEGER,
+        supersedes      TEXT,
+        created_at      INTEGER NOT NULL,
+        updated_at      INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_memory_items_state
+        ON memory_items(state, updated_at DESC);
+
+      -- A statement can be supported by more than one decision. Deleting a
+      -- source removes its row; the item survives only if support remains.
+      CREATE TABLE IF NOT EXISTS memory_sources (
+        id          TEXT PRIMARY KEY,
+        item_id     TEXT NOT NULL REFERENCES memory_items(id) ON DELETE CASCADE,
+        decision_id TEXT REFERENCES decisions(id) ON DELETE CASCADE,
+        field       TEXT NOT NULL,
+        excerpt     TEXT NOT NULL,
+        revision    INTEGER NOT NULL,
+        created_at  INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_memory_sources_item ON memory_sources(item_id);
+      CREATE INDEX IF NOT EXISTS idx_memory_sources_decision ON memory_sources(decision_id);
+
+      CREATE TABLE IF NOT EXISTS memory_jobs (
+        id                 TEXT PRIMARY KEY,
+        decision_id        TEXT NOT NULL REFERENCES decisions(id) ON DELETE CASCADE,
+        content_revision   INTEGER NOT NULL,
+        prompt_version     INTEGER NOT NULL,
+        consent_generation INTEGER NOT NULL,
+        state              TEXT NOT NULL,
+        attempts           INTEGER NOT NULL DEFAULT 0,
+        last_error         TEXT,
+        created_at         INTEGER NOT NULL,
+        updated_at         INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_memory_jobs_state ON memory_jobs(state, created_at ASC);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_jobs_pending
+        ON memory_jobs(decision_id) WHERE state IN ('queued', 'running');
+
+      -- A rejection is remembered so the same assertion is not re-proposed on
+      -- every subsequent edit of the same decision.
+      CREATE TABLE IF NOT EXISTS memory_suppressions (
+        id         TEXT PRIMARY KEY,
+        normalized TEXT NOT NULL,
+        category   TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_suppressions_key
+        ON memory_suppressions(category, normalized);
+    `
   }
 ]
 

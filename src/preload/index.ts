@@ -32,6 +32,15 @@ import type {
   SendChatResult,
   StoredChatMessage
 } from '@shared/ai'
+import type {
+  MemoryActionResult,
+  MemoryBackfillEstimate,
+  MemoryCategory,
+  MemoryItem,
+  MemoryJob,
+  MemorySettings,
+  MemoryState
+} from '@shared/memory'
 
 const api: Api = {
   vault: {
@@ -68,7 +77,9 @@ const api: Api = {
       ipcRenderer.invoke('decisions:update', id, patch),
     review: (id: string, input: DecisionReviewInput): Promise<Decision> =>
       ipcRenderer.invoke('decisions:review', id, input),
-    delete: (id: string): Promise<void> => ipcRenderer.invoke('decisions:delete', id)
+    delete: (id: string): Promise<void> => ipcRenderer.invoke('decisions:delete', id),
+    setMemoryExcluded: (id: string, excluded: boolean): Promise<void> =>
+      ipcRenderer.invoke('decisions:set-memory-excluded', id, excluded)
   },
   conversations: {
     list: (): Promise<ConversationSummary[]> => ipcRenderer.invoke('conversations:list'),
@@ -79,6 +90,34 @@ const api: Api = {
     setAttachments: (id: string, attachments: AttachmentScope): Promise<void> =>
       ipcRenderer.invoke('conversations:set-attachments', id, attachments),
     delete: (id: string): Promise<void> => ipcRenderer.invoke('conversations:delete', id)
+  },
+  memory: {
+    getSettings: (): Promise<MemorySettings> => ipcRenderer.invoke('memory:get-settings'),
+    setEnabled: (enabled: boolean): Promise<MemorySettings> =>
+      ipcRenderer.invoke('memory:set-enabled', enabled),
+    setModel: (modelId: string): Promise<MemorySettings> =>
+      ipcRenderer.invoke('memory:set-model', modelId),
+    list: (states?: MemoryState[]): Promise<MemoryItem[]> =>
+      ipcRenderer.invoke('memory:list', states),
+    jobs: (): Promise<MemoryJob[]> => ipcRenderer.invoke('memory:jobs'),
+    approve: (id: string): Promise<MemoryActionResult> =>
+      ipcRenderer.invoke('memory:approve', id),
+    reject: (id: string): Promise<MemoryActionResult> => ipcRenderer.invoke('memory:reject', id),
+    delete: (id: string): Promise<MemoryActionResult> => ipcRenderer.invoke('memory:delete', id),
+    updateStatement: (id: string, statement: string): Promise<MemoryActionResult> =>
+      ipcRenderer.invoke('memory:update-statement', id, statement),
+    add: (category: MemoryCategory, statement: string): Promise<MemoryActionResult> =>
+      ipcRenderer.invoke('memory:add', category, statement),
+    forgetAll: (): Promise<MemoryActionResult> => ipcRenderer.invoke('memory:forget-all'),
+    estimateBackfill: (decisionIds: string[]): Promise<MemoryBackfillEstimate> =>
+      ipcRenderer.invoke('memory:estimate-backfill', decisionIds),
+    runBackfill: (decisionIds: string[]): Promise<MemoryActionResult> =>
+      ipcRenderer.invoke('memory:run-backfill', decisionIds),
+    onChanged: (cb: () => void) => {
+      const listener = () => cb()
+      ipcRenderer.on('memory:changed', listener)
+      return () => ipcRenderer.removeListener('memory:changed', listener)
+    }
   },
   ai: {
     getSettings: (): Promise<OnlineSettings> => ipcRenderer.invoke('ai:get-settings'),

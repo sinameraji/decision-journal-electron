@@ -13,6 +13,14 @@ import type {
   SendChatParams
 } from '@shared/ai'
 import type {
+  MemoryActionResult,
+  MemoryBackfillEstimate,
+  MemoryItem,
+  MemoryJob,
+  MemorySettings
+} from '@shared/memory'
+import { isMemoryCategory } from '@shared/memory'
+import type {
   CatalogModel,
   DecisionCreateInput,
   DecisionReviewInput,
@@ -67,6 +75,33 @@ import { loadOnlineSettings, revokeOnlineConsent, saveOnlineSettings } from './a
 import { clearCatalog, getCachedCatalog, refreshCatalog } from './ai/catalog'
 import { resetOnlineSession } from './ai/network'
 import { OpenRouterError } from './ai/openrouterClient'
+import {
+  configureMemoryQueue,
+  enqueueNow,
+  queueDepth,
+  resumeQueue,
+  scheduleExtraction,
+  stopQueue
+} from './memory/queue'
+import {
+  addUserMemory,
+  cancelAllJobs,
+  countByState,
+  deleteItem,
+  forgetAll,
+  getMemoryModel,
+  invalidateForDecision,
+  isMemoryEnabled,
+  listItems,
+  listJobs,
+  pruneOrphanedItems,
+  rejectItem,
+  setDecisionExcluded,
+  setItemState,
+  setMemoryEnabled,
+  setMemoryModel,
+  updateStatement
+} from './memory/store'
 import {
   deleteModel as deleteOllamaModel,
   getVersion,
@@ -146,6 +181,12 @@ configureAiService({
   vaultGeneration: () => vaultGeneration
 })
 
+configureMemoryQueue({
+  db: () => session.db,
+  vaultGeneration: () => vaultGeneration,
+  defaultModel: async () => (await loadOnlineSettings()).defaultModel
+})
+
 const activeRequests = new Map<string, AbortController>()
 
 function sendOllamaEvent(evt: OllamaEvent): void {
@@ -182,6 +223,7 @@ async function hydrateDb(masterKey: Buffer): Promise<void> {
   session.db = await openEncryptedDb(dbPath(), masterKey)
   session.masterKey = masterKey
   bumpVaultGeneration()
+  resumeQueue()
 }
 
 /**
@@ -205,6 +247,8 @@ async function onlineSettings(): Promise<OnlineSettings> {
 
 /** Tears the session down and stops anything still in flight against it. */
 function teardownSession(): void {
+  // Locking pauses extraction rather than losing it: queued jobs stay queued.
+  stopQueue()
   cancelAllRequests()
   for (const controller of activeRequests.values()) controller.abort()
   activeRequests.clear()
@@ -378,14 +422,21 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('decisions:create', async (_evt, input: DecisionCreateInput) => {
     if (!session.db) throw new Error('Database is locked')
-    return createDecision(session.db, input)
+    const created = createDecision(session.db, input)
+    scheduleExtraction(created.id)
+    return created
   })
 
   ipcMain.handle(
     'decisions:update',
     async (_evt, id: string, patch: DecisionUpdateInput) => {
       if (!session.db) throw new Error('Database is locked')
-      return updateDecision(session.db, id, patch)
+      const updated = updateDecision(session.db, id, patch)
+      // Anything derived from the old text can no longer be trusted, so mark it
+      // stale locally before any new extraction runs.
+      invalidateForDecision(session.db, id, updated.updatedAt)
+      scheduleExtraction(id)
+      return updated
     }
   )
 
@@ -393,14 +444,28 @@ export function registerIpcHandlers(): void {
     'decisions:review',
     async (_evt, id: string, input: DecisionReviewInput) => {
       if (!session.db) throw new Error('Database is locked')
-      return reviewDecision(session.db, id, input)
+      const reviewed = reviewDecision(session.db, id, input)
+      invalidateForDecision(session.db, id, reviewed.updatedAt)
+      scheduleExtraction(id)
+      return reviewed
     }
   )
 
   ipcMain.handle('decisions:delete', async (_evt, id: string) => {
     if (!session.db) throw new Error('Database is locked')
-    return deleteDecision(session.db, id)
+    deleteDecision(session.db, id)
+    // Sources cascade with the row; drop any memory left with no support.
+    pruneOrphanedItems(session.db)
   })
+
+  ipcMain.handle(
+    'decisions:set-memory-excluded',
+    async (_evt, id: string, excluded: boolean): Promise<void> => {
+      if (!session.db) throw new Error('Database is locked')
+      if (typeof id !== 'string') return
+      setDecisionExcluded(session.db, id, excluded === true)
+    }
+  )
 
   // ---------------- Conversations ----------------
 
@@ -445,10 +510,14 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('ai:set-enabled', async (_evt, enabled: boolean): Promise<OnlineSettings> => {
     if (enabled === true) {
       await saveOnlineSettings({ enabled: true })
+      // Extraction was paused when online AI went off; let it run again.
+      resumeQueue()
     } else {
       // Disabling is also a consent revocation: anything mid-flight is aborted
       // and any reply that still arrives is dropped instead of stored.
       cancelAllRequests()
+      stopQueue()
+      if (session.db) cancelAllJobs(session.db)
       await revokeOnlineConsent()
       await resetOnlineSession()
     }
@@ -466,6 +535,8 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('ai:clear-api-key', async (): Promise<OnlineSettings> => {
     cancelAllRequests()
+    stopQueue()
+    if (session.db) cancelAllJobs(session.db)
     await clearOpenRouterKey()
     await revokeOnlineConsent()
     await clearCatalog()
@@ -525,6 +596,7 @@ export function registerIpcHandlers(): void {
       provider: params?.provider,
       modelId: params?.modelId,
       attachments: params?.attachments,
+      includeMemories: params?.includeMemories === true,
       pendingText: typeof params?.pendingText === 'string' ? params.pendingText : ''
     })
     if (result.ok) return { ok: true as const, preview: result.preview }
@@ -555,6 +627,192 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('ai:cancel', async (_evt, requestId: string): Promise<void> => {
     if (typeof requestId === 'string') cancelRequest(requestId)
   })
+
+  // ---------------- Optional AI memory ----------------
+
+  async function memorySettings(): Promise<MemorySettings> {
+    const online = await loadOnlineSettings()
+    if (!session.db) {
+      return {
+        enabled: false,
+        modelId: online.defaultModel,
+        approvedCount: 0,
+        pendingCount: 0,
+        queuedCount: 0,
+        blockedByOnlineDisabled: !online.enabled
+      }
+    }
+    return {
+      enabled: isMemoryEnabled(session.db),
+      modelId: getMemoryModel(session.db, online.defaultModel),
+      approvedCount: countByState(session.db, 'approved'),
+      pendingCount: countByState(session.db, 'pending'),
+      queuedCount: queueDepth(),
+      blockedByOnlineDisabled: !online.enabled
+    }
+  }
+
+  ipcMain.handle('memory:get-settings', async (): Promise<MemorySettings> => memorySettings())
+
+  ipcMain.handle(
+    'memory:set-enabled',
+    async (_evt, enabled: boolean): Promise<MemorySettings> => {
+      if (!session.db) return memorySettings()
+      if (enabled === true) {
+        const online = await loadOnlineSettings()
+        // Memory rides on the online provider; it cannot be switched on alone.
+        if (online.enabled) {
+          setMemoryEnabled(session.db, true)
+          resumeQueue()
+        }
+      } else {
+        setMemoryEnabled(session.db, false)
+        stopQueue()
+        cancelAllJobs(session.db)
+      }
+      return memorySettings()
+    }
+  )
+
+  ipcMain.handle(
+    'memory:set-model',
+    async (_evt, modelId: string): Promise<MemorySettings> => {
+      if (session.db && typeof modelId === 'string' && modelId.trim()) {
+        setMemoryModel(session.db, modelId.trim())
+      }
+      return memorySettings()
+    }
+  )
+
+  ipcMain.handle('memory:list', async (_evt, states?: string[]): Promise<MemoryItem[]> => {
+    if (!session.db) return []
+    const valid = Array.isArray(states)
+      ? states.filter(
+          (v): v is 'pending' | 'approved' | 'rejected' | 'stale' =>
+            v === 'pending' || v === 'approved' || v === 'rejected' || v === 'stale'
+        )
+      : undefined
+    return listItems(session.db, valid && valid.length > 0 ? valid : undefined)
+  })
+
+  ipcMain.handle('memory:jobs', async (): Promise<MemoryJob[]> => {
+    if (!session.db) return []
+    return listJobs(session.db)
+  })
+
+  ipcMain.handle('memory:approve', async (_evt, id: string): Promise<MemoryActionResult> => {
+    if (!session.db) return { ok: false, error: 'Journal is locked.' }
+    if (typeof id !== 'string') return { ok: false, error: 'Invalid id.' }
+    setItemState(session.db, id, 'approved')
+    return { ok: true }
+  })
+
+  ipcMain.handle('memory:reject', async (_evt, id: string): Promise<MemoryActionResult> => {
+    if (!session.db) return { ok: false, error: 'Journal is locked.' }
+    if (typeof id !== 'string') return { ok: false, error: 'Invalid id.' }
+    // Also records a suppression rule so this assertion does not come back on
+    // the next edit of the same decision.
+    rejectItem(session.db, id)
+    return { ok: true }
+  })
+
+  ipcMain.handle('memory:delete', async (_evt, id: string): Promise<MemoryActionResult> => {
+    if (!session.db) return { ok: false, error: 'Journal is locked.' }
+    if (typeof id !== 'string') return { ok: false, error: 'Invalid id.' }
+    deleteItem(session.db, id)
+    return { ok: true }
+  })
+
+  ipcMain.handle(
+    'memory:update-statement',
+    async (_evt, id: string, statement: string): Promise<MemoryActionResult> => {
+      if (!session.db) return { ok: false, error: 'Journal is locked.' }
+      if (typeof id !== 'string') return { ok: false, error: 'Invalid id.' }
+      const trimmed = typeof statement === 'string' ? statement.trim() : ''
+      if (!trimmed) return { ok: false, error: 'A memory cannot be empty.' }
+      if (trimmed.length > 240) return { ok: false, error: 'Keep it under 240 characters.' }
+      updateStatement(session.db, id, trimmed)
+      return { ok: true }
+    }
+  )
+
+  ipcMain.handle(
+    'memory:add',
+    async (_evt, category: string, statement: string): Promise<MemoryActionResult> => {
+      if (!session.db) return { ok: false, error: 'Journal is locked.' }
+      if (!isMemoryCategory(category)) return { ok: false, error: 'Unknown category.' }
+      const trimmed = typeof statement === 'string' ? statement.trim() : ''
+      if (!trimmed) return { ok: false, error: 'A memory cannot be empty.' }
+      if (trimmed.length > 240) return { ok: false, error: 'Keep it under 240 characters.' }
+      addUserMemory(session.db, { category, statement: trimmed })
+      return { ok: true }
+    }
+  )
+
+  ipcMain.handle('memory:forget-all', async (): Promise<MemoryActionResult> => {
+    if (!session.db) return { ok: false, error: 'Journal is locked.' }
+    stopQueue()
+    forgetAll(session.db)
+    return { ok: true }
+  })
+
+  ipcMain.handle(
+    'memory:estimate-backfill',
+    async (_evt, decisionIds: string[]): Promise<MemoryBackfillEstimate> => {
+      const empty = { decisionCount: 0, approxTokens: 0, estimatedCostUsd: null }
+      const db = session.db
+      if (!db || !Array.isArray(decisionIds)) return empty
+      const online = await loadOnlineSettings()
+      const catalog = await getCachedCatalog()
+      const extractionModel = getMemoryModel(db, online.defaultModel)
+      const model = catalog.models.find((m) => m.id === extractionModel)
+      let chars = 0
+      let count = 0
+      for (const id of decisionIds) {
+        if (typeof id !== 'string') continue
+        const d = getDecision(db, id)
+        if (!d) continue
+        count += 1
+        chars +=
+          d.title.length +
+          d.situation.length +
+          d.problemStatement.length +
+          d.variables.length +
+          d.complications.length +
+          d.alternatives.length +
+          d.rangeOfOutcomes.length +
+          d.expectedOutcome.length +
+          d.outcome.length +
+          d.lessonsLearned.length +
+          2000 // instruction and approved-memory overhead per job
+      }
+      const approxTokens = Math.ceil(chars / 4)
+      return {
+        decisionCount: count,
+        approxTokens,
+        estimatedCostUsd:
+          model?.promptUsdPerMillion != null
+            ? (approxTokens / 1_000_000) * model.promptUsdPerMillion
+            : null
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'memory:run-backfill',
+    async (_evt, decisionIds: string[]): Promise<MemoryActionResult> => {
+      if (!session.db) return { ok: false, error: 'Journal is locked.' }
+      if (!isMemoryEnabled(session.db)) return { ok: false, error: 'Memory is turned off.' }
+      if (!Array.isArray(decisionIds) || decisionIds.length === 0) {
+        return { ok: false, error: 'Select at least one decision.' }
+      }
+      // Backfill is always an explicit, scoped batch — never automatic.
+      for (const id of decisionIds) {
+        if (typeof id === 'string') await enqueueNow(id)
+      }
+      return { ok: true }
+    }
+  )
 
   ipcMain.handle('theme:get', async (): Promise<ThemeMode> => loadThemePreference())
 
