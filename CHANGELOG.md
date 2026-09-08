@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.1](https://github.com/sinameraji/decision-journal-electron/compare/v0.7.0...v0.7.1) (2026-09-08)
+
+
+### Bug Fixes
+
+* survive a change of Apple signing identity ([6b57e02](https://github.com/sinameraji/decision-journal-electron/commit/6b57e024037a0b3e2378de2cfb0df3cc2b7dde21))
+* survive a change of Apple signing identity ([a5f550b](https://github.com/sinameraji/decision-journal-electron/commit/a5f550ba56d0c1713492f4882df738a02e7fba01))
+
 ## [0.7.0](https://github.com/sinameraji/decision-journal-electron/compare/v0.6.0...v0.7.0) (2026-09-08)
 
 
