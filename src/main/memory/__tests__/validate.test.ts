@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Decision } from '@shared/ipc-contract'
 import { serializeOptions } from '@shared/ipc-contract'
 import { normalizeStatement } from '@shared/memory'
+import { renderDecision } from '../../ai/decisionSections'
 import { decisionFields, locateExcerpt, validateProposals } from '../validate'
 
 const DECISION: Decision = {
@@ -194,5 +195,55 @@ describe('normalizeStatement', () => {
     expect(normalizeStatement('They value autonomy')).not.toBe(
       normalizeStatement('They value stability')
     )
+  })
+})
+
+/**
+ * Regression: a live run against the API had three correct memories rejected
+ * as fabricated because the validator's search corpus had drifted from the text
+ * the model was actually shown. Both now come from `decisionSections`.
+ */
+describe('the validator searches exactly what the model was shown', () => {
+  const fields = decisionFields(DECISION)
+
+  it('can find a quote from the review date line', () => {
+    expect(locateExcerpt(fields, 'Review due: 2026-12-08')).toBe('review date')
+    expect(locateExcerpt(fields, '2026-12-08')).toBe('review date')
+  })
+
+  it('can find a quote from the decision date line', () => {
+    expect(locateExcerpt(fields, 'Decided on: 2026-09-08')).toBe('decision date')
+  })
+
+  it('can find a quote from the mental state line', () => {
+    expect(locateExcerpt(fields, 'focused, anxious')).toBe('mental state')
+  })
+
+  it('can find an option quoted with its rendered marker and separator', () => {
+    expect(locateExcerpt(fields, '[CHOSEN] Stay employed and run an eight-week pilot')).toBe(
+      'options'
+    )
+    expect(
+      locateExcerpt(fields, 'Quit immediately — Rejected because demand is not yet demonstrated')
+    ).toBe('options')
+  })
+
+  it('every non-empty line the prompt shows is searchable', () => {
+    const rendered = renderDecision(DECISION, 1)
+    const skip = /^--- |^\[|^Options considered:$/
+    const unsearchable = rendered
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l.length > 12 && !skip.test(l))
+      .filter((line) => {
+        // Strip the prompt's own label prefix; the value after it must be findable.
+        const value = line.includes(': ') ? line.slice(line.indexOf(': ') + 2) : line
+        return value.length > 12 && locateExcerpt(fields, value) === null
+      })
+    expect(unsearchable).toEqual([])
+  })
+
+  it('still rejects text that appears nowhere in the entry', () => {
+    expect(locateExcerpt(fields, 'They have always been risk averse')).toBeNull()
   })
 })

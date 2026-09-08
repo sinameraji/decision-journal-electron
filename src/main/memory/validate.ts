@@ -9,8 +9,8 @@
  */
 
 import type { Decision } from '@shared/ipc-contract'
-import { parseAlternatives } from '@shared/ipc-contract'
 import { isMemoryCategory, type MemoryKind } from '@shared/memory'
+import { decisionSections } from '../ai/decisionSections'
 import type { ProposalInput } from './store'
 
 export const MAX_ITEMS_PER_DECISION = 12
@@ -34,28 +34,19 @@ export interface ValidationResult {
   rejected: { statement: string; reason: RejectionReason }[]
 }
 
-/** Field label → text, as the user wrote it. */
+/**
+ * The corpus the validator searches, which is exactly what the model was shown.
+ * Sharing `decisionSections` with the prompt builder is the point: a live run
+ * found correct quotations rejected as fabricated because this map was missing
+ * the date and mental-state lines and formatted options differently.
+ */
 export function decisionFields(d: Decision): Record<string, string> {
-  const parsed = parseAlternatives(d.alternatives)
-  const optionsText =
-    parsed.kind === 'structured'
-      ? parsed.options.map((o) => `${o.name} ${o.note}`).join(' \n ')
-      : parsed.kind === 'legacy'
-        ? parsed.text
-        : ''
-
-  return {
-    title: d.title,
-    situation: d.situation,
-    'problem statement': d.problemStatement,
-    variables: d.variables,
-    complications: d.complications,
-    options: optionsText,
-    'range of outcomes': d.rangeOfOutcomes,
-    'expected outcome': d.expectedOutcome,
-    outcome: d.outcome,
-    'lessons learned': d.lessonsLearned
+  const sections = decisionSections(d)
+  const out: Record<string, string> = {}
+  for (const [key, value] of Object.entries(sections)) {
+    if (value) out[key] = value
   }
+  return out
 }
 
 function normalizeForMatch(s: string): string {

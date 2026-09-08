@@ -74,7 +74,11 @@ describe('renderDecision', () => {
 
   it('still renders a legacy free-text alternatives field', () => {
     const legacy = makeDecision({ alternatives: 'I also thought about waiting a year.' })
-    expect(renderDecision(legacy, 1)).toContain('Options considered: I also thought about waiting')
+    // Structured and legacy options render identically (label, newline, body)
+    // so the memory validator can search both the same way.
+    expect(renderDecision(legacy, 1)).toContain(
+      'Options considered:\nI also thought about waiting a year.'
+    )
   })
 })
 
