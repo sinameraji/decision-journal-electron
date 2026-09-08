@@ -73,3 +73,29 @@ describe('which failures are safe to retry', () => {
     expect(hint).toMatch(/not your (api )?key/i)
   })
 })
+
+/**
+ * Live evidence from OpenRouter: an upstream rate limit can arrive inside an
+ * HTTP 200, in `choices[0]` rather than at the top level:
+ *
+ *   { "choices": [{ "finish_reason": "error",
+ *                   "error": { "code": 429, "message": "...rate-limited upstream..." } }] }
+ *
+ * The parser treated any finish_reason as a clean completion, so this rendered
+ * as a successful empty reply — no error, no retry, nothing to act on.
+ */
+describe('an upstream failure inside a 200', () => {
+  it('is a rate limit, not a normal finish', () => {
+    const err = errorForStatus(429, 'openai/gpt-5.6-luna is temporarily rate-limited upstream.')
+    expect(err.code).toBe('rate-limited')
+  })
+
+  it('is transient, so it belongs in the retryable set', () => {
+    expect(new Set([429, 502, 503, 504]).has(429)).toBe(true)
+  })
+
+  it('does not leak the upstream text to the user', () => {
+    const err = errorForStatus(429, 'add your own key at https://openrouter.ai/settings/integrations')
+    expect(err.message).not.toContain('settings/integrations')
+  })
+})

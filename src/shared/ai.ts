@@ -1,3 +1,4 @@
+import type { LensKind } from './ipc-contract'
 /**
  * Shared types for the AI provider layer.
  *
@@ -177,6 +178,8 @@ export interface ConversationMeta {
   onlineConsentGiven: boolean
   /** Whether approved memories are sent with this conversation. Off by default. */
   includeMemories: boolean
+  /** Analytical frame this thread is running under, if any. */
+  lens: LensKind | null
   createdAt: number
   updatedAt: number
 }
@@ -198,6 +201,8 @@ export interface PayloadPreview {
   estimatedPromptCostUsd: number | null
   /** True when approved memories are part of this payload. */
   memoriesIncluded: boolean
+  /** Lens instruction included in this payload, if any. */
+  lens: LensKind | null
 }
 
 export interface SendChatParams {
@@ -207,6 +212,8 @@ export interface SendChatParams {
   text: string
   attachments: AttachmentScope
   includeMemories: boolean
+  /** Analytical frame to apply, appended to the system prompt. */
+  lens: LensKind | null
   /** Set once the user has reviewed the online disclosure for this thread. */
   onlineConsentConfirmed: boolean
 }

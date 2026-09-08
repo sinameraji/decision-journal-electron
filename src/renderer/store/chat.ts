@@ -8,6 +8,7 @@ import type {
   StoredChatMessage
 } from '@shared/ai'
 import { DEFAULT_ONLINE_MODEL } from '@shared/ai'
+import type { LensKind } from '@shared/ipc-contract'
 import type {
   CatalogModel,
   ConversationSummary,
@@ -88,6 +89,12 @@ interface ChatState {
   includeMemories: boolean
   /** True when there is at least one approved memory to send. */
   memoryAvailable: boolean
+  /**
+   * Analytical frame for this conversation. Applied as a system instruction
+   * rather than pasted into the user's message, so the payload preview and the
+   * online consent gate keep telling the truth about what is sent.
+   */
+  lens: LensKind | null
 
   init: () => Promise<void>
   refresh: () => Promise<void>
@@ -97,6 +104,9 @@ interface ChatState {
   selectModel: (provider: AiProvider, modelId: string) => void
   setAttachments: (ids: string[]) => Promise<void>
   setIncludeMemories: (include: boolean) => void
+  setLens: (lens: LensKind | null) => void
+  /** Starts a fresh thread running one lens over one decision. */
+  startLens: (lens: LensKind, decisionId: string) => void
   refreshMemoryAvailability: () => Promise<void>
   confirmOnlineConsent: () => void
   startPull: (modelId: string) => Promise<void>
@@ -274,6 +284,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   onlineConsentConfirmed: false,
   includeMemories: false,
   memoryAvailable: false,
+  lens: null,
   sending: false,
 
   init: async () => {
@@ -384,6 +395,25 @@ export const useChatStore = create<ChatState>((set, get) => ({
     })
   },
 
+  setLens: (lens) => set({ lens }),
+
+  startLens: (lens, decisionId) => {
+    // A lens run is its own thread: long analyses should not derail an existing
+    // conversation, and the frame belongs to the whole thread.
+    set({
+      messages: [],
+      streaming: null,
+      activeConversationId: null,
+      attachments: [decisionId],
+      lens,
+      includeMemories: get().memoryAvailable,
+      onlineConsentConfirmed: false,
+      sending: false,
+      stage: 'chat',
+      setupPinned: false
+    })
+  },
+
   setIncludeMemories: (include) => {
     // Turning this on widens what an online thread sends, so consent for this
     // thread has to be given again.
@@ -472,6 +502,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         text: trimmed,
         attachments: { decisionIds: attachments },
         includeMemories,
+        lens: get().lens,
         onlineConsentConfirmed: provider === 'ollama' ? true : onlineConsentConfirmed
       })
     } catch (err) {
@@ -568,7 +599,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       attachments: [],
       onlineConsentConfirmed: false,
       includeMemories: false,
-      memoryAvailable: false
+      memoryAvailable: false,
+      lens: null
     })
   },
 
@@ -600,6 +632,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         attachments: meta.attachments.decisionIds,
         onlineConsentConfirmed: meta.onlineConsentGiven,
         includeMemories: meta.includeMemories,
+        lens: meta.lens,
         stage: 'chat'
       })
     } catch {
@@ -617,7 +650,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
           activeConversationId: null,
           attachments: [],
           onlineConsentConfirmed: false,
-          includeMemories: false
+          includeMemories: false,
+          lens: null
         })
       }
       await get().loadConversationList()

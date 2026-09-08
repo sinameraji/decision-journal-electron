@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { AlertTriangle, Globe, Loader2, X } from 'lucide-react'
 import type { AiProvider, PayloadPreview } from '@shared/ai'
+import { LENS_LABELS, type LensKind } from '@shared/ipc-contract'
 
 interface Props {
   provider: AiProvider
@@ -8,6 +9,7 @@ interface Props {
   conversationId: string | null
   attachments: string[]
   includeMemories: boolean
+  lens: LensKind | null
   pendingText: string
   /** Null when opened as a plain preview rather than as the consent gate. */
   onConfirm: (() => void) | null
@@ -25,6 +27,7 @@ export default function SendReviewModal({
   conversationId,
   attachments,
   includeMemories,
+  lens,
   pendingText,
   onConfirm,
   onClose
@@ -42,6 +45,7 @@ export default function SendReviewModal({
         modelId,
         attachments: { decisionIds: attachments },
         includeMemories,
+        lens,
         pendingText
       })
       .then((res) => {
@@ -52,7 +56,7 @@ export default function SendReviewModal({
     return () => {
       cancelled = true
     }
-  }, [conversationId, provider, modelId, attachments, includeMemories, pendingText])
+  }, [conversationId, provider, modelId, attachments, includeMemories, lens, pendingText])
 
   const online = provider === 'openrouter'
 
@@ -123,6 +127,12 @@ export default function SendReviewModal({
                   </ul>
                 )}
               </Stat>
+
+              {preview.lens && (
+                <Stat label="Lens">
+                  {LENS_LABELS[preview.lens]} — its instruction is added to the coach's prompt.
+                </Stat>
+              )}
 
               <Stat label="Approved memories">
                 {preview.memoriesIncluded

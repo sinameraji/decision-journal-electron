@@ -28,6 +28,8 @@ import type {
   StoredChatMessage
 } from '@shared/ai'
 import { isAiProvider } from '@shared/ai'
+import type { LensKind } from '@shared/ipc-contract'
+import { isLensKind } from '@shared/ipc-contract'
 import {
   appendMessage,
   createConversation,
@@ -36,6 +38,7 @@ import {
   markOnlineConsent,
   setConversationAttachments,
   setConversationIncludeMemories,
+  setConversationLens,
   setConversationProvider
 } from '../db/conversations'
 import { chatStream, type ChatMessageIn } from '../ollama/client'
@@ -120,6 +123,7 @@ interface ResolvedRequest {
   totalChars: number
   includeMemories: boolean
   memoriesIncluded: boolean
+  lens: LensKind | null
 }
 
 /**
@@ -133,6 +137,7 @@ async function resolve(
     modelId: unknown
     attachments: unknown
     includeMemories: unknown
+    lens: unknown
     pendingText: string
   },
   requireOnlineReady: boolean
@@ -162,11 +167,13 @@ async function resolve(
   }
 
   const includeMemories = params.includeMemories === true
+  const lens = isLensKind(params.lens) ? params.lens : null
   const built = buildSystemPrompt({
     db,
     provider,
     attachedDecisionIds: attachments.decisionIds,
-    includeMemories
+    includeMemories,
+    lens
   })
   const history = params.conversationId
     ? getConversationMessages(db, params.conversationId)
@@ -189,7 +196,8 @@ async function resolve(
       history,
       totalChars,
       includeMemories,
-      memoriesIncluded: built.memoriesIncluded
+      memoriesIncluded: built.memoriesIncluded,
+      lens
     }
   }
 }
@@ -202,6 +210,7 @@ export async function buildPayloadPreview(params: {
   modelId: unknown
   attachments: unknown
   includeMemories: unknown
+  lens: unknown
   pendingText: string
 }): Promise<{ ok: true; preview: PayloadPreview } | { ok: false; result: SendChatResult }> {
   const resolved = await resolve(params, false)
@@ -237,7 +246,8 @@ export async function buildPayloadPreview(params: {
       contextLimit: catalogModel?.contextLength ?? null,
       withinBudget: r.totalChars <= MAX_PROMPT_CHARS,
       estimatedPromptCostUsd,
-      memoriesIncluded: r.memoriesIncluded
+      memoriesIncluded: r.memoriesIncluded,
+      lens: r.lens
     }
   }
 }
@@ -260,6 +270,7 @@ export async function sendChat(
       modelId: params.modelId,
       attachments: params.attachments,
       includeMemories: params.includeMemories,
+      lens: params.lens,
       pendingText: text
     },
     true
@@ -315,7 +326,8 @@ export async function sendChat(
       provider: r.provider,
       modelId: r.modelId,
       attachments: r.attachments,
-      includeMemories: r.includeMemories
+      includeMemories: r.includeMemories,
+      lens: r.lens
     })
     conversationId = existing.id
   } else {
@@ -326,6 +338,7 @@ export async function sendChat(
     if (existing.includeMemories !== r.includeMemories) {
       setConversationIncludeMemories(r.db, existing.id, r.includeMemories)
     }
+    if (existing.lens !== r.lens) setConversationLens(r.db, existing.id, r.lens)
   }
   const convId = conversationId as string
 

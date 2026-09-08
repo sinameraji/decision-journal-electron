@@ -8,7 +8,8 @@ import type {
   StoredChatMessage
 } from '@shared/ai'
 import { isAiProvider } from '@shared/ai'
-import type { ConversationSummary } from '@shared/ipc-contract'
+import type { ConversationSummary, LensKind } from '@shared/ipc-contract'
+import { isLensKind } from '@shared/ipc-contract'
 
 type DB = Database.Database
 
@@ -20,6 +21,7 @@ interface ConversationRow {
   attachments: string
   online_consent: number
   include_memories: number
+  lens: string | null
   created_at: number
   updated_at: number
 }
@@ -36,7 +38,7 @@ interface ChatMessageRow {
 }
 
 const CONVERSATION_COLUMNS = `id, title, model_id, provider, attachments, online_consent,
-                              include_memories, created_at, updated_at`
+                              include_memories, lens, created_at, updated_at`
 
 function parseAttachments(raw: string): AttachmentScope {
   try {
@@ -57,6 +59,7 @@ function rowToMeta(row: ConversationRow): ConversationMeta {
     attachments: parseAttachments(row.attachments),
     onlineConsentGiven: row.online_consent === 1,
     includeMemories: row.include_memories === 1,
+    lens: isLensKind(row.lens) ? row.lens : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   }
@@ -86,6 +89,7 @@ export function createConversation(
     modelId: string
     attachments: AttachmentScope
     includeMemories: boolean
+    lens: LensKind | null
   }
 ): ConversationMeta {
   const id = randomUUID()
@@ -93,9 +97,9 @@ export function createConversation(
   db.prepare(
     `INSERT INTO conversations
        (id, title, model_id, provider, attachments, online_consent, include_memories,
-        created_at, updated_at)
+        lens, created_at, updated_at)
      VALUES (@id, @title, @modelId, @provider, @attachments, 0, @includeMemories,
-             @createdAt, @updatedAt)`
+             @lens, @createdAt, @updatedAt)`
   ).run({
     id,
     title: params.title,
@@ -103,6 +107,7 @@ export function createConversation(
     provider: params.provider,
     attachments: JSON.stringify(params.attachments.decisionIds),
     includeMemories: params.includeMemories ? 1 : 0,
+    lens: params.lens,
     createdAt: now,
     updatedAt: now
   })
@@ -114,6 +119,7 @@ export function createConversation(
     attachments: params.attachments,
     onlineConsentGiven: false,
     includeMemories: params.includeMemories,
+    lens: params.lens,
     createdAt: now,
     updatedAt: now
   }
@@ -227,6 +233,10 @@ export function setConversationProvider(
     modelId,
     conversationId
   )
+}
+
+export function setConversationLens(db: DB, conversationId: string, lens: LensKind | null): void {
+  db.prepare('UPDATE conversations SET lens = ? WHERE id = ?').run(lens, conversationId)
 }
 
 export function setConversationIncludeMemories(

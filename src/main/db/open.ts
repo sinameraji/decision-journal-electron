@@ -232,6 +232,13 @@ const MIGRATIONS: Migration[] = [
         ON memory_suppressions(category, normalized);
     `
   }
+,
+  {
+    // A conversation remembers the lens it was started under, so reopening it
+    // restores the frame rather than silently reverting to a generic coach.
+    version: 7,
+    sql: `ALTER TABLE conversations ADD COLUMN lens TEXT;`
+  }
 ]
 
 function runMigrations(db: DB): void {
@@ -278,7 +285,9 @@ const REQUIRED_COLUMNS: { table: string; column: string; definition: string }[] 
   // Migration 6
   { table: 'decisions', column: 'memory_excluded', definition: 'INTEGER NOT NULL DEFAULT 0' },
   { table: 'conversations', column: 'include_memories', definition: 'INTEGER NOT NULL DEFAULT 0' },
-  { table: 'memory_items', column: 'question', definition: 'TEXT' }
+  { table: 'memory_items', column: 'question', definition: 'TEXT' },
+  // Migration 7
+  { table: 'conversations', column: 'lens', definition: 'TEXT' }
 ]
 
 /** Tables the current code needs, with the SQL to recreate an absent one. */
