@@ -239,6 +239,7 @@ async function onlineSettings(): Promise<OnlineSettings> {
     enabled: settings.enabled,
     hasKey: key.hasKey,
     keyHint: key.keyHint,
+    keyUnreadable: key.unreadable,
     defaultModel: settings.defaultModel,
     consentGeneration: settings.consentGeneration,
     catalogFetchedAt: settings.catalogFetchedAt,
@@ -400,7 +401,17 @@ export function registerIpcHandlers(): void {
       await hydrateDb(masterKey)
       return { ok: true }
     } catch (err) {
-      console.error('[vault:unlock-touchid]', err)
+      // The wrapped key is unreadable — the usual cause is the app being
+      // re-signed under a different Apple team, which invalidates the Keychain
+      // ACL. Turn the setting off rather than leaving a toggle that says it is
+      // on while the fingerprint prompt silently does nothing.
+      console.error('[vault:unlock-touchid] stored key unreadable; disabling Touch ID')
+      try {
+        await vault.disableTouchId()
+      } catch {
+        // best effort
+      }
+      void err
       return { ok: false, error: 'internal' }
     }
   })

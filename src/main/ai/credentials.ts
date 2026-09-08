@@ -86,9 +86,21 @@ export async function clearOpenRouterKey(): Promise<void> {
 export async function getOpenRouterKeyStatus(): Promise<{
   hasKey: boolean
   keyHint: string | null
+  /** A key is on disk but cannot be decrypted by this build. */
+  unreadable: boolean
 }> {
   const file = await read()
-  return { hasKey: file.openrouterKey !== null, keyHint: file.openrouterKeyHint }
+  if (file.openrouterKey === null) return { hasKey: false, keyHint: null, unreadable: false }
+
+  // Reporting a saved key that no longer decrypts sends the user hunting for a
+  // network problem. The usual cause is the app being re-signed under a
+  // different Apple team, which invalidates the Keychain ACL.
+  const readable = (await readOpenRouterKey()) !== null
+  return {
+    hasKey: readable,
+    keyHint: file.openrouterKeyHint,
+    unreadable: !readable
+  }
 }
 
 /**

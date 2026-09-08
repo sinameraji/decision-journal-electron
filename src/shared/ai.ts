@@ -39,6 +39,11 @@ export interface OnlineSettings {
   hasKey: boolean
   /** Last 4 characters of the stored key, for display only. Null when no key. */
   keyHint: string | null
+  /**
+   * A key is stored but this build cannot decrypt it — normally because the app
+   * was re-signed under a different Apple team. The user must re-enter it.
+   */
+  keyUnreadable: boolean
   /** Model used for new online conversations. */
   defaultModel: string
   /**

@@ -112,9 +112,11 @@ export default function OnlineAiSettings() {
           icon={<KeyRound size={16} strokeWidth={1.75} />}
           title="OpenRouter API key"
           subtitle={
-            settings.hasKey
-              ? `Saved in your macOS Keychain — ends in ${settings.keyHint}. Usage is billed to your OpenRouter account.`
-              : 'Not set. The key is stored in the Keychain and never included in a backup.'
+            settings.keyUnreadable
+              ? `A key ending in ${settings.keyHint} is saved, but this build cannot read it — that happens when the app is re-signed under a different Apple account. Add it again to carry on.`
+              : settings.hasKey
+                ? `Saved in your macOS Keychain — ends in ${settings.keyHint}. Usage is billed to your OpenRouter account.`
+                : 'Not set. The key is stored in the Keychain and never included in a backup.'
           }
           right={
             editingKey ? (
@@ -151,7 +153,7 @@ export default function OnlineAiSettings() {
               </div>
             ) : (
               <div className="flex items-center gap-1.5">
-                {settings.hasKey && (
+                {(settings.hasKey || settings.keyUnreadable) && (
                   <button
                     type="button"
                     onClick={handleRemoveKey}
@@ -167,7 +169,7 @@ export default function OnlineAiSettings() {
                   disabled={busy}
                   className="rounded-md border border-border bg-bg px-3 py-1.5 text-[12px] text-text hover:bg-nav-active disabled:opacity-50"
                 >
-                  {settings.hasKey ? 'Replace' : 'Add key'}
+                  {settings.hasKey ? 'Replace' : settings.keyUnreadable ? 'Re-enter key' : 'Add key'}
                 </button>
               </div>
             )
