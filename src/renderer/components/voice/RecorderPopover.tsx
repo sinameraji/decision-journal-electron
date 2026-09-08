@@ -96,10 +96,11 @@ export default function RecorderPopover({
         try {
           const blob = new Blob(chunks.current, { type: recorder.mimeType })
           const samples = await decodeToFloat32(blob)
-          const buffer = samples.buffer.slice(
-            samples.byteOffset,
-            samples.byteOffset + samples.byteLength
-          )
+          // Copy into a fresh ArrayBuffer: `samples.buffer` is typed
+          // ArrayBufferLike, which can be a SharedArrayBuffer and is not
+          // structured-cloneable across the IPC boundary.
+          const buffer = new ArrayBuffer(samples.byteLength)
+          new Float32Array(buffer).set(samples)
           const text = await window.api.transcription.transcribe(buffer)
           onTranscribed(text)
           onClose()

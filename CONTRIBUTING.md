@@ -103,26 +103,26 @@ Releases are cut by CI, never from a laptop. Secrets live in GitHub repository s
 
 ### Cutting a release
 
-```bash
-# 1. Bump version in package.json
-# 2. Commit and push
-git add package.json
-git commit -m "Release v0.1.0"
-git push origin main
+Releases are automated by [release-please](https://github.com/googleapis/release-please). **Do not bump `version` in `package.json` by hand, and do not push a `v*` tag** — that is the old path and it is no longer how releases happen.
 
-# 3. Tag and push the tag — this is what triggers CI
-git tag v0.1.0
-git push origin v0.1.0
-```
+1. Use [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `chore:`) on everything that lands on `main`.
+2. release-please keeps an open release PR that accumulates the version bump and changelog entries.
+3. Merging that PR is what cuts the release: release-please creates the tag and GitHub Release, which triggers the macOS build job.
 
-The `.github/workflows/release.yml` workflow:
+`.github/workflows/release-please.yml` is the primary workflow. Its `build-mac` job only runs when a release is actually created, and it:
 
 1. Imports the Developer ID cert into an ephemeral keychain on the CI runner.
-2. Runs `npm run dist:mac` — electron-builder builds a universal DMG, signs it under hardened runtime, and notarizes with Apple.
-3. Creates (or updates) the GitHub Release for the tag and uploads the `.dmg` and `.dmg.blockmap`.
+2. Runs electron-builder with `--publish never` — a universal DMG and ZIP, signed under hardened runtime and notarized with Apple.
+3. Uploads the assets with `gh release upload`: the DMG, the ZIP, both blockmaps, and `latest-mac.yml`.
 4. Cleans up the ephemeral keychain.
 
+`electron-builder.yml`'s `publish` block exists only so `electron-updater` knows where to look for updates at runtime — publishing itself is done by `gh release upload`, which is why `--publish never` matters.
+
+`.github/workflows/release.yml` is the older tag-triggered workflow. It is kept as a manual fallback for re-releasing a tag; it is not the normal path.
+
 Users then grab the notarized DMG from the Releases page. Because it's notarized, macOS opens it without a Gatekeeper warning.
+
+Note that a GitHub Release can be visible before its assets finish uploading. If you are checking the website download button or the updater feed right after a release, give the upload time to finish first.
 
 ## Coding conventions
 

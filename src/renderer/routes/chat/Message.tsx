@@ -1,10 +1,8 @@
 import { useCallback, useState } from 'react'
 import Markdown from 'react-markdown'
 import { Check, Copy } from 'lucide-react'
-import type { ChatMsg } from '@shared/ipc-contract'
-
 interface Props {
-  message: ChatMsg
+  message: { role: 'user' | 'assistant'; content: string }
   streaming?: boolean
 }
 

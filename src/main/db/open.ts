@@ -127,6 +127,37 @@ const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation
         ON chat_messages(conversation_id, created_at ASC);
     `
+  },
+  {
+    // Provider metadata for conversations. Everything that existed before this
+    // migration was an Ollama conversation, so that is the default; no existing
+    // decision or message content is rewritten.
+    version: 5,
+    sql: `
+      ALTER TABLE conversations ADD COLUMN provider       TEXT    NOT NULL DEFAULT 'ollama';
+      ALTER TABLE conversations ADD COLUMN attachments    TEXT    NOT NULL DEFAULT '[]';
+      ALTER TABLE conversations ADD COLUMN online_consent INTEGER NOT NULL DEFAULT 0;
+
+      ALTER TABLE chat_messages ADD COLUMN status   TEXT NOT NULL DEFAULT 'complete';
+      ALTER TABLE chat_messages ADD COLUMN provider TEXT;
+      ALTER TABLE chat_messages ADD COLUMN model_id TEXT;
+      ALTER TABLE chat_messages ADD COLUMN seq      INTEGER NOT NULL DEFAULT 0;
+
+      UPDATE chat_messages SET seq = (
+        SELECT COUNT(*) FROM chat_messages m2
+         WHERE m2.conversation_id = chat_messages.conversation_id
+           AND (m2.created_at < chat_messages.created_at
+                OR (m2.created_at = chat_messages.created_at AND m2.rowid <= chat_messages.rowid))
+      );
+
+      UPDATE chat_messages
+         SET provider = 'ollama',
+             model_id = (SELECT c.model_id FROM conversations c WHERE c.id = conversation_id)
+       WHERE role = 'assistant';
+
+      CREATE INDEX IF NOT EXISTS idx_chat_messages_seq
+        ON chat_messages(conversation_id, seq ASC);
+    `
   }
 ]
 
@@ -143,15 +174,63 @@ function runMigrations(db: DB): void {
      ON CONFLICT(key) DO UPDATE SET value = excluded.value`
   )
 
+  const target = MIGRATIONS[MIGRATIONS.length - 1].version
+  console.log(`[db] schema_version=${current}, target=${target}`)
+
   const apply = db.transaction(() => {
     for (const m of MIGRATIONS) {
       if (m.version > current) {
+        console.log(`[db] applying migration ${m.version}`)
         db.exec(m.sql)
         setVersion.run(String(m.version))
       }
     }
   })
   apply()
+
+  // A version number is a claim, not proof. If a database was ever stamped
+  // ahead of the schema it actually has, every later query fails with an
+  // unhelpful "no such column" at runtime. Verify and repair instead.
+  const conversationColumns = new Set(
+    (db.pragma('table_info(conversations)') as { name: string }[]).map((c) => c.name)
+  )
+  const missing = ['provider', 'attachments', 'online_consent'].filter(
+    (c) => !conversationColumns.has(c)
+  )
+  if (conversationColumns.size > 0 && missing.length > 0) {
+    console.warn(
+      `[db] schema_version claims ${current >= 5 ? current : target} but conversations is missing: ${missing.join(', ')} — repairing`
+    )
+    const repair = db.transaction(() => {
+      if (missing.includes('provider')) {
+        db.exec(`ALTER TABLE conversations ADD COLUMN provider TEXT NOT NULL DEFAULT 'ollama'`)
+      }
+      if (missing.includes('attachments')) {
+        db.exec(`ALTER TABLE conversations ADD COLUMN attachments TEXT NOT NULL DEFAULT '[]'`)
+      }
+      if (missing.includes('online_consent')) {
+        db.exec(`ALTER TABLE conversations ADD COLUMN online_consent INTEGER NOT NULL DEFAULT 0`)
+      }
+      const messageColumns = new Set(
+        (db.pragma('table_info(chat_messages)') as { name: string }[]).map((c) => c.name)
+      )
+      if (!messageColumns.has('status')) {
+        db.exec(`ALTER TABLE chat_messages ADD COLUMN status TEXT NOT NULL DEFAULT 'complete'`)
+      }
+      if (!messageColumns.has('provider')) {
+        db.exec(`ALTER TABLE chat_messages ADD COLUMN provider TEXT`)
+      }
+      if (!messageColumns.has('model_id')) {
+        db.exec(`ALTER TABLE chat_messages ADD COLUMN model_id TEXT`)
+      }
+      if (!messageColumns.has('seq')) {
+        db.exec(`ALTER TABLE chat_messages ADD COLUMN seq INTEGER NOT NULL DEFAULT 0`)
+      }
+      setVersion.run(String(target))
+    })
+    repair()
+    console.log('[db] repair complete')
+  }
 }
 
 export async function openEncryptedDb(dbPath: string, masterKey: Buffer): Promise<DB> {

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Clock, Trash2 } from 'lucide-react'
+import { Clock, Globe, Trash2 } from 'lucide-react'
 import { useChatStore } from '../../store/chat'
 
 function relativeDate(ts: number): string {
@@ -82,7 +82,14 @@ export default function PastChatsDropdown() {
                     <div className="truncate text-[12.5px] text-text">
                       {c.title}
                     </div>
-                    <div className="mt-0.5 text-[10.5px] text-text-muted">
+                    <div className="mt-0.5 flex items-center gap-1 text-[10.5px] text-text-muted">
+                      {c.provider === 'openrouter' && (
+                        <Globe
+                          size={9}
+                          strokeWidth={2}
+                          className="text-amber-600 dark:text-amber-400"
+                        />
+                      )}
                       {relativeDate(c.updatedAt)}
                     </div>
                   </div>

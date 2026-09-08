@@ -6,8 +6,14 @@ import { totalmem } from 'node:os'
 import { unlinkSync } from 'node:fs'
 import type Database from 'better-sqlite3-multiple-ciphers'
 import type {
+  AiErrorCode,
+  AttachmentScope,
+  OnlineCatalog,
+  OnlineSettings,
+  SendChatParams
+} from '@shared/ai'
+import type {
   CatalogModel,
-  ChatMsg,
   DecisionCreateInput,
   DecisionReviewInput,
   DecisionUpdateInput,
@@ -38,24 +44,38 @@ import {
   updateDecision
 } from './db/decisions'
 import {
-  appendMessage,
-  createConversation,
   deleteConversation,
+  getConversation,
   getConversationMessages,
-  listConversations
+  listConversations,
+  setConversationAttachments
 } from './db/conversations'
 import {
-  chatStream,
+  buildPayloadPreview,
+  cancelAllRequests,
+  cancelRequest,
+  configureAiService,
+  sendChat
+} from './ai/service'
+import {
+  clearOpenRouterKey,
+  getOpenRouterKeyStatus,
+  readOpenRouterKey,
+  setOpenRouterKey
+} from './ai/credentials'
+import { loadOnlineSettings, revokeOnlineConsent, saveOnlineSettings } from './ai/settings'
+import { clearCatalog, getCachedCatalog, refreshCatalog } from './ai/catalog'
+import { resetOnlineSession } from './ai/network'
+import { OpenRouterError } from './ai/openrouterClient'
+import {
   deleteModel as deleteOllamaModel,
   getVersion,
   listTags,
   OllamaNotRunningError,
   pullModel,
-  showModel,
-  type ChatMessageIn
+  showModel
 } from './ollama/client'
 import { classifyModel, getHardwareProfile } from './ollama/hardware'
-import { buildCoachSystemPrompt } from './ollama/systemPrompt'
 import { applyThemeMode, loadThemePreference, saveThemePreference } from './theme'
 import { checkForUpdates, downloadUpdate, installUpdate } from './updater'
 import { loadUpdatePrefs, saveUpdatePrefs } from './updatePrefs'
@@ -109,6 +129,23 @@ interface Session {
 
 const session: Session = { db: null, masterKey: null }
 
+/**
+ * Incremented on every unlock, lock and restore. The AI service stamps each
+ * request with the value that was current when it started, so a reply that
+ * arrives after the vault changed underneath it is discarded rather than
+ * written into a different database.
+ */
+let vaultGeneration = 0
+
+function bumpVaultGeneration(): void {
+  vaultGeneration += 1
+}
+
+configureAiService({
+  db: () => session.db,
+  vaultGeneration: () => vaultGeneration
+})
+
 const activeRequests = new Map<string, AbortController>()
 
 function sendOllamaEvent(evt: OllamaEvent): void {
@@ -144,6 +181,38 @@ function zeroBuffer(buf: Buffer | null): void {
 async function hydrateDb(masterKey: Buffer): Promise<void> {
   session.db = await openEncryptedDb(dbPath(), masterKey)
   session.masterKey = masterKey
+  bumpVaultGeneration()
+}
+
+/**
+ * The renderer's view of online-AI state. Deliberately assembled here so the
+ * stored API key can never be included — only whether one exists and its last
+ * four characters.
+ */
+async function onlineSettings(): Promise<OnlineSettings> {
+  const settings = await loadOnlineSettings()
+  const key = await getOpenRouterKeyStatus()
+  return {
+    enabled: settings.enabled,
+    hasKey: key.hasKey,
+    keyHint: key.keyHint,
+    defaultModel: settings.defaultModel,
+    consentGeneration: settings.consentGeneration,
+    catalogFetchedAt: settings.catalogFetchedAt,
+    acknowledgedNonZdrModels: settings.acknowledgedNonZdrModels
+  }
+}
+
+/** Tears the session down and stops anything still in flight against it. */
+function teardownSession(): void {
+  cancelAllRequests()
+  for (const controller of activeRequests.values()) controller.abort()
+  activeRequests.clear()
+  closeDb(session.db)
+  zeroBuffer(session.masterKey)
+  session.db = null
+  session.masterKey = null
+  bumpVaultGeneration()
 }
 
 export function registerIpcHandlers(): void {
@@ -187,12 +256,7 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('vault:lock', async (): Promise<void> => {
-    for (const controller of activeRequests.values()) controller.abort()
-    activeRequests.clear()
-    closeDb(session.db)
-    zeroBuffer(session.masterKey)
-    session.db = null
-    session.masterKey = null
+    teardownSession()
   })
 
   ipcMain.handle(
@@ -340,32 +404,156 @@ export function registerIpcHandlers(): void {
 
   // ---------------- Conversations ----------------
 
-  ipcMain.handle('conversations:create', async (_evt, modelId: string, title: string) => {
-    if (!session.db) throw new Error('Database is locked')
-    return createConversation(session.db, modelId, title)
-  })
-
   ipcMain.handle('conversations:list', async () => {
     if (!session.db) return []
     return listConversations(session.db)
   })
 
+  ipcMain.handle('conversations:get', async (_evt, id: string) => {
+    if (!session.db) return null
+    if (typeof id !== 'string') return null
+    return getConversation(session.db, id)
+  })
+
   ipcMain.handle('conversations:messages', async (_evt, id: string) => {
     if (!session.db) return []
+    if (typeof id !== 'string') return []
     return getConversationMessages(session.db, id)
   })
 
   ipcMain.handle(
-    'conversations:append-message',
-    async (_evt, id: string, role: string, content: string) => {
+    'conversations:set-attachments',
+    async (_evt, id: string, attachments: AttachmentScope) => {
       if (!session.db) throw new Error('Database is locked')
-      appendMessage(session.db, id, role, content)
+      if (typeof id !== 'string') return
+      const ids = Array.isArray(attachments?.decisionIds)
+        ? attachments.decisionIds.filter((v): v is string => typeof v === 'string')
+        : []
+      setConversationAttachments(session.db, id, { decisionIds: ids })
     }
   )
 
   ipcMain.handle('conversations:delete', async (_evt, id: string) => {
     if (!session.db) throw new Error('Database is locked')
     deleteConversation(session.db, id)
+  })
+
+  // ---------------- Optional online AI ----------------
+
+  ipcMain.handle('ai:get-settings', async (): Promise<OnlineSettings> => onlineSettings())
+
+  ipcMain.handle('ai:set-enabled', async (_evt, enabled: boolean): Promise<OnlineSettings> => {
+    if (enabled === true) {
+      await saveOnlineSettings({ enabled: true })
+    } else {
+      // Disabling is also a consent revocation: anything mid-flight is aborted
+      // and any reply that still arrives is dropped instead of stored.
+      cancelAllRequests()
+      await revokeOnlineConsent()
+      await resetOnlineSession()
+    }
+    return onlineSettings()
+  })
+
+  ipcMain.handle(
+    'ai:set-api-key',
+    async (_evt, key: string): Promise<{ ok: boolean; error?: string }> => {
+      if (!session.db) return { ok: false, error: 'Unlock your journal first.' }
+      if (typeof key !== 'string') return { ok: false, error: 'Invalid key.' }
+      return setOpenRouterKey(key)
+    }
+  )
+
+  ipcMain.handle('ai:clear-api-key', async (): Promise<OnlineSettings> => {
+    cancelAllRequests()
+    await clearOpenRouterKey()
+    await revokeOnlineConsent()
+    await clearCatalog()
+    await resetOnlineSession()
+    return onlineSettings()
+  })
+
+  ipcMain.handle(
+    'ai:set-default-model',
+    async (_evt, modelId: string): Promise<OnlineSettings> => {
+      if (typeof modelId === 'string' && modelId.trim()) {
+        await saveOnlineSettings({ defaultModel: modelId.trim() })
+      }
+      return onlineSettings()
+    }
+  )
+
+  ipcMain.handle('ai:catalog', async (): Promise<OnlineCatalog> => getCachedCatalog())
+
+  ipcMain.handle(
+    'ai:acknowledge-non-zdr',
+    async (_evt, modelId: string): Promise<OnlineSettings> => {
+      // Recorded rather than asked each time, so an automatic path can check
+      // whether the user ever actually agreed to use this model without ZDR.
+      if (typeof modelId === 'string' && modelId.trim()) {
+        const current = await loadOnlineSettings()
+        if (!current.acknowledgedNonZdrModels.includes(modelId)) {
+          await saveOnlineSettings({
+            acknowledgedNonZdrModels: [...current.acknowledgedNonZdrModels, modelId.trim()]
+          })
+        }
+      }
+      return onlineSettings()
+    }
+  )
+
+  ipcMain.handle('ai:refresh-catalog', async () => {
+    const settings = await loadOnlineSettings()
+    if (!settings.enabled) {
+      return { ok: false as const, code: 'not-enabled' as AiErrorCode, message: 'Online AI is turned off.' }
+    }
+    try {
+      const catalog = await refreshCatalog(await readOpenRouterKey())
+      return { ok: true as const, catalog }
+    } catch (err) {
+      const mapped =
+        err instanceof OpenRouterError
+          ? { code: err.code, message: err.message }
+          : { code: 'network' as AiErrorCode, message: 'Could not reach OpenRouter.' }
+      return { ok: false as const, ...mapped }
+    }
+  })
+
+  ipcMain.handle('ai:preview', async (_evt, params) => {
+    const result = await buildPayloadPreview({
+      conversationId: typeof params?.conversationId === 'string' ? params.conversationId : null,
+      provider: params?.provider,
+      modelId: params?.modelId,
+      attachments: params?.attachments,
+      pendingText: typeof params?.pendingText === 'string' ? params.pendingText : ''
+    })
+    if (result.ok) return { ok: true as const, preview: result.preview }
+    return {
+      ok: false as const,
+      code: result.result.ok ? ('internal' as AiErrorCode) : result.result.code,
+      message: result.result.ok ? 'Unknown error' : result.result.message
+    }
+  })
+
+  ipcMain.handle('ai:send', async (evt, params: SendChatParams) => {
+    const sender = evt.sender
+    if (sender.isDestroyed()) {
+      return { ok: false as const, code: 'internal' as AiErrorCode, message: 'No window.' }
+    }
+    try {
+      return await sendChat(params, sender.id)
+    } catch (err) {
+      // A throw here rejects the renderer's invoke(), which previously left the
+      // chat with a sent message, no indicator and no error — indistinguishable
+      // from a hung request. Always come back with something the UI can show.
+      console.error('[ai:send]', err)
+      const message = err instanceof Error ? err.message : String(err)
+      return { ok: false as const, code: 'internal' as AiErrorCode, message }
+    }
+  })
+
+  ipcMain.handle('ai:cancel', async (_evt, requestId: string): Promise<void> => {
+    if (typeof requestId === 'string') cancelRequest(requestId)
   })
 
   ipcMain.handle('theme:get', async (): Promise<ThemeMode> => loadThemePreference())
@@ -478,6 +666,8 @@ export function registerIpcHandlers(): void {
         await fs.copyFile(srcDb, dbPath())
         await vault.sealLocally()
         await hydrateDb(unlockResult.masterKey)
+        await revokeOnlineConsent()
+        await clearCatalog()
         return { ok: true }
       } catch (err) {
         console.error('[vault:import]', err)
@@ -523,12 +713,7 @@ export function registerIpcHandlers(): void {
       }
 
       // Tear down current session
-      for (const controller of activeRequests.values()) controller.abort()
-      activeRequests.clear()
-      closeDb(session.db)
-      zeroBuffer(session.masterKey)
-      session.db = null
-      session.masterKey = null
+      teardownSession()
 
       // Move current files aside as safety net
       try { await fs.rename(vaultPath(), vaultPath() + '.replaced') } catch { /* may not exist */ }
@@ -544,6 +729,11 @@ export function registerIpcHandlers(): void {
         await fs.copyFile(srcDb, dbPath())
         await vault.sealLocally()
         await hydrateDb(unlockResult.masterKey)
+
+        // A restored journal has not consented to anything. Online AI goes back
+        // to off, and queued work from the previous vault cannot resume.
+        await revokeOnlineConsent()
+        await clearCatalog()
 
         // Success — clean up old files
         await fs.rm(vaultPath() + '.replaced', { force: true })
@@ -724,51 +914,6 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle(
-    'ollama:chat',
-    async (_evt, modelId: string, messages: ChatMsg[]): Promise<string> => {
-      const requestId = randomUUID()
-      const controller = new AbortController()
-      activeRequests.set(requestId, controller)
-
-      const systemPrompt = buildCoachSystemPrompt(session.db)
-      const fullMessages: ChatMessageIn[] = [
-        { role: 'system', content: systemPrompt },
-        ...messages.map((m) => ({ role: m.role, content: m.content }))
-      ]
-
-      void (async () => {
-        try {
-          for await (const chunk of chatStream(modelId, fullMessages, controller.signal)) {
-            if (chunk.error) {
-              sendOllamaEvent({ requestId, type: 'error', message: chunk.error })
-              return
-            }
-            const token = chunk.message?.content ?? ''
-            if (token) {
-              sendOllamaEvent({ requestId, type: 'chat-token', token })
-            }
-            if (chunk.done) {
-              sendOllamaEvent({ requestId, type: 'done' })
-              return
-            }
-          }
-          sendOllamaEvent({ requestId, type: 'done' })
-        } catch (err) {
-          if (controller.signal.aborted) {
-            sendOllamaEvent({ requestId, type: 'cancelled' })
-          } else {
-            sendOllamaEvent({ requestId, type: 'error', message: errorMessage(err) })
-          }
-        } finally {
-          activeRequests.delete(requestId)
-        }
-      })()
-
-      return requestId
-    }
-  )
-
   ipcMain.handle('app:check-for-updates', async (): Promise<void> => {
     await checkForUpdates()
   })
@@ -803,12 +948,7 @@ export function registerIpcHandlers(): void {
 }
 
 export function clearSessionOnQuit(): void {
-  for (const controller of activeRequests.values()) controller.abort()
-  activeRequests.clear()
-  closeDb(session.db)
-  zeroBuffer(session.masterKey)
-  session.db = null
-  session.masterKey = null
+  teardownSession()
 }
 
 export function currentSystemIsDark(): boolean {
