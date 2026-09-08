@@ -4,6 +4,7 @@ import Unlock from './routes/Unlock'
 import Decisions from './routes/Decisions'
 import NewDecision from './routes/NewDecision'
 import EditDecision from './routes/EditDecision'
+import DecisionDetail from './routes/DecisionDetail'
 import Reviews from './routes/Reviews'
 import Analytics from './routes/Analytics'
 import Chat from './routes/chat'
@@ -45,6 +46,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/decisions" replace />} />
         <Route path="/decisions" element={<Decisions />} />
+        <Route path="/decisions/:id" element={<DecisionDetail />} />
         <Route path="/decisions/:id/edit" element={<EditDecision />} />
         <Route path="/new" element={<NewDecision />} />
         <Route path="/reviews" element={<Reviews />} />

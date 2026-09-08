@@ -34,6 +34,9 @@ export default function DecisionCard({
   const preview = decision.situation?.trim()
   const hasPreview = preview && preview.length > 0
 
+  // Clicking a card opens the decision rather than the edit form: reading it,
+  // and running a lens over it, are the common actions. Edit is one click away.
+  const openDetail = () => navigate(`/decisions/${decision.id}`)
   const openEdit = () => navigate(`/decisions/${decision.id}/edit`)
 
   const stop = (e: MouseEvent) => {
@@ -42,9 +45,9 @@ export default function DecisionCard({
 
   return (
     <article
-      onClick={openEdit}
+      onClick={openDetail}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') openEdit()
+        if (e.key === 'Enter') openDetail()
       }}
       tabIndex={0}
       role="button"

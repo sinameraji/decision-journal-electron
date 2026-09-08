@@ -350,14 +350,26 @@ async function attemptStreamChatCompletion(
         if (chunk === 'aborted') throw new OpenRouterError('cancelled', 'Stopped.')
         if (chunk.done) {
           for (const evt of parser.end()) {
-            const outcome = handleFrame(evt.data, cb, (m) => (servedModel = m), (u) => (usage = u))
+            const outcome = handleFrame(
+              evt.data,
+              cb,
+              (m) => (servedModel = m),
+              (u) => (usage = u),
+              sawContent
+            )
             if (outcome === 'content') sawContent = true
             if (outcome === 'finished') finished = true
           }
           break
         }
         for (const evt of parser.push(chunk.value)) {
-          const outcome = handleFrame(evt.data, cb, (m) => (servedModel = m), (u) => (usage = u))
+          const outcome = handleFrame(
+            evt.data,
+            cb,
+            (m) => (servedModel = m),
+            (u) => (usage = u),
+            sawContent
+          )
           if (outcome === 'content') sawContent = true
           if (outcome === 'finished') finished = true
         }
@@ -411,7 +423,12 @@ async function readWithIdleTimeout(
 
 interface StreamChunk {
   model?: string
-  choices?: { delta?: { content?: string | null }; finish_reason?: string | null }[]
+  choices?: {
+    delta?: { content?: string | null }
+    finish_reason?: string | null
+    /** OpenRouter reports some upstream failures per choice, not at top level. */
+    error?: { code?: number | string; message?: string }
+  }[]
   usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number }
   error?: { message?: string; code?: number | string; metadata?: unknown }
 }
@@ -424,7 +441,8 @@ function handleFrame(
   data: string,
   cb: StreamCallbacks,
   setModel: (m: string) => void,
-  setUsage: (u: AiUsage) => void
+  setUsage: (u: AiUsage) => void,
+  sawContent: boolean
 ): 'content' | 'finished' | 'none' {
   if (isDoneSentinel(data)) return 'finished'
   let parsed: StreamChunk
@@ -452,6 +470,18 @@ function handleFrame(
 
   let emitted = false
   for (const choice of parsed.choices ?? []) {
+    // An upstream failure can arrive inside the choice with finish_reason
+    // "error" and an HTTP 200 already sent. Treating that as a normal finish
+    // rendered a rate limit as a successful empty reply.
+    if (choice.error || choice.finish_reason === 'error') {
+      const status =
+        typeof choice.error?.code === 'number' ? choice.error.code : 500
+      const message = choice.error?.message ?? ''
+      // Nothing has been shown or billed yet, so let the retry loop have it.
+      if (!sawContent && !emitted) throw new PreStreamHttpError(status, message, null)
+      throw errorForStatus(status, message)
+    }
+
     const token = choice.delta?.content
     if (typeof token === 'string' && token.length > 0) {
       cb.onToken(token)

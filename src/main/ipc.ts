@@ -598,6 +598,7 @@ export function registerIpcHandlers(): void {
       modelId: params?.modelId,
       attachments: params?.attachments,
       includeMemories: params?.includeMemories === true,
+      lens: params?.lens,
       pendingText: typeof params?.pendingText === 'string' ? params.pendingText : ''
     })
     if (result.ok) return { ok: true as const, preview: result.preview }

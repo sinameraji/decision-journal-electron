@@ -220,6 +220,52 @@ export function serializeOptions(options: DecisionOption[]): string {
   return JSON.stringify(options)
 }
 
+/**
+ * Analytical frames a decision can be run through. Each one is a fixed
+ * instruction appended to the coach's system prompt — never pasted into the
+ * user's message — so the payload preview and consent gate stay accurate.
+ */
+export const LENS_KINDS = [
+  'opportunity-cost',
+  'pre-mortem',
+  'regret-minimization',
+  'counterparty-incentives'
+] as const
+
+export type LensKind = (typeof LENS_KINDS)[number]
+
+export function isLensKind(value: unknown): value is LensKind {
+  return typeof value === 'string' && (LENS_KINDS as readonly string[]).includes(value)
+}
+
+export const LENS_LABELS: Record<LensKind, string> = {
+  'opportunity-cost': 'Opportunity Cost',
+  'pre-mortem': 'Pre-mortem',
+  'regret-minimization': 'Regret Minimization',
+  'counterparty-incentives': 'Counterparty Incentives'
+}
+
+export const LENS_DESCRIPTIONS: Record<LensKind, string> = {
+  'opportunity-cost': "What you're really giving up by picking this one.",
+  'pre-mortem': 'Assume it failed in 12 months — what went wrong?',
+  'regret-minimization': 'Project ten years out — which option would you regret more?',
+  'counterparty-incentives':
+    'Who else is in this decision, and how do their incentives change the payoff?'
+}
+
+/**
+ * The user turn sent when a lens is run with an empty composer. The lens itself
+ * is the instruction, so there is nothing for the user to type — but a request
+ * still needs a user message, and the transcript should say plainly what was
+ * asked rather than showing a blank turn.
+ */
+export const LENS_OPENERS: Record<LensKind, string> = {
+  'opportunity-cost': 'Run the opportunity-cost lens over this decision.',
+  'pre-mortem': 'Run a pre-mortem on this decision.',
+  'regret-minimization': 'Run a regret-minimization analysis on this decision.',
+  'counterparty-incentives': 'Analyse the counterparty incentives in this decision.'
+}
+
 export interface WhisperModelInfo {
   name: string
   label: string
@@ -332,6 +378,7 @@ export interface Api {
       modelId: string
       attachments: AttachmentScope
       includeMemories: boolean
+      lens: LensKind | null
       pendingText: string
     }): Promise<
       { ok: true; preview: PayloadPreview } | { ok: false; code: AiErrorCode; message: string }
