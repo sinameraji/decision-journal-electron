@@ -92,9 +92,31 @@ const db = {
   }
 } as never
 
+/**
+ * Hard spend ceiling for one run. A bug in the request path — a retry loop, a
+ * runaway context — must not be able to empty the key. Checked before every
+ * paid call, so the worst case is one request over the line, not unbounded.
+ */
+const MAX_SPEND_USD = Number(process.env.OPENROUTER_MAX_SPEND ?? '0.25')
+
 let totalCost = 0
 let pass = 0
 let fail = 0
+let budgetStopped = false
+
+class BudgetExceeded extends Error {
+  constructor() {
+    super(`spend cap of $${MAX_SPEND_USD.toFixed(2)} reached`)
+  }
+}
+
+/** Call before anything that costs money. */
+function assertBudget(): void {
+  if (totalCost >= MAX_SPEND_USD) {
+    budgetStopped = true
+    throw new BudgetExceeded()
+  }
+}
 
 function check(name: string, ok: boolean, detail = ''): void {
   if (ok) {
@@ -111,6 +133,8 @@ function newSignal(): AbortSignal {
 }
 
 async function main(): Promise<void> {
+  console.log(`\n(spend cap for this run: $${MAX_SPEND_USD.toFixed(2)})`)
+
   console.log('\n=== 1. Catalog + ZDR routing ===')
   try {
     const catalog = await fetchOnlineCatalog(KEY)
@@ -139,6 +163,7 @@ async function main(): Promise<void> {
   let answer = ''
   let served: string | null = null
   try {
+    assertBudget()
     await streamChatCompletion(
       {
         apiKey: KEY,
@@ -179,6 +204,7 @@ async function main(): Promise<void> {
   console.log('\n=== 4. Refuses to invent demographics ===')
   let probe = ''
   try {
+    assertBudget()
     await streamChatCompletion(
       {
         apiKey: KEY,
@@ -236,6 +262,7 @@ async function main(): Promise<void> {
 
   let raw = ''
   try {
+    assertBudget()
     await streamChatCompletion(
       {
         apiKey: KEY,
@@ -298,6 +325,7 @@ async function main(): Promise<void> {
   for (let run = 1; run <= 3; run++) {
     let out = ''
     try {
+      assertBudget()
       await streamChatCompletion(
         {
           apiKey: KEY,
@@ -328,6 +356,7 @@ async function main(): Promise<void> {
   console.log('\n=== 7. Multi-turn: constraint changes mid-conversation ===')
   let followUp = ''
   try {
+    assertBudget()
     await streamChatCompletion(
       {
         apiKey: KEY,
@@ -369,8 +398,15 @@ async function main(): Promise<void> {
     check('bad key maps to invalid-key', code === 'invalid-key', `got ${code}`)
   }
 
+  if (budgetStopped) {
+    console.log(
+      `\n!! STOPPED: hit the $${MAX_SPEND_USD.toFixed(2)} spend cap. Remaining checks did not run.` +
+        `\n   Raise it with OPENROUTER_MAX_SPEND=1.00 if that is deliberate.`
+    )
+  }
   console.log(`\n=== ${pass} passed, ${fail} failed · cost this run: $${totalCost.toFixed(5)} ===\n`)
-  app.exit(fail === 0 ? 0 : 1)
+  // A budget stop is not a pass, even with zero failures.
+  app.exit(fail === 0 && !budgetStopped ? 0 : 1)
 }
 
 app.whenReady().then(() => {
