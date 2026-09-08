@@ -35,7 +35,7 @@ export default function ChatView() {
   const onlineConsentConfirmed = useChatStore((s) => s.onlineConsentConfirmed)
   const includeMemories = useChatStore((s) => s.includeMemories)
   const setIncludeMemories = useChatStore((s) => s.setIncludeMemories)
-  const [memoryAvailable, setMemoryAvailable] = useState(false)
+  const memoryAvailable = useChatStore((s) => s.memoryAvailable)
   const sendMessage = useChatStore((s) => s.sendMessage)
   const stopStreaming = useChatStore((s) => s.stopStreaming)
   const clearConversation = useChatStore((s) => s.clearConversation)
@@ -71,14 +71,6 @@ export default function ChatView() {
   useEffect(() => {
     textareaRef.current?.focus()
   }, [activeModel])
-
-  useEffect(() => {
-    // The toggle only makes sense once something has actually been approved.
-    void window.api.memory
-      .getSettings()
-      .then((s) => setMemoryAvailable(s.approvedCount > 0))
-      .catch(() => setMemoryAvailable(false))
-  }, [])
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -175,10 +167,14 @@ export default function ChatView() {
                 ? 'border-[rgb(var(--accent))] bg-[rgb(var(--accent))] text-accent-text dark:border-border dark:bg-bg-elevated dark:text-text'
                 : 'border-border bg-bg text-text-muted hover:text-text'
             ].join(' ')}
-            title="Send your approved memories with this conversation"
+            title={
+              includeMemories
+                ? 'Your approved memories are sent with this conversation'
+                : 'This conversation is not sending your approved memories'
+            }
           >
             <Brain size={12} strokeWidth={2} />
-            {includeMemories ? 'Memories on' : 'Memories off'}
+            {includeMemories ? 'Using memories' : 'Memories off for this chat'}
           </button>
         )}
         <button
@@ -302,7 +298,7 @@ function EmptyState({ online, onAttach }: { online: boolean; onAttach: () => voi
   const onlineConsentConfirmed = useChatStore((s) => s.onlineConsentConfirmed)
   const includeMemories = useChatStore((s) => s.includeMemories)
   const setIncludeMemories = useChatStore((s) => s.setIncludeMemories)
-  const [memoryAvailable, setMemoryAvailable] = useState(false)
+  const memoryAvailable = useChatStore((s) => s.memoryAvailable)
   const canQuickSend = !online || onlineConsentConfirmed
 
   return (

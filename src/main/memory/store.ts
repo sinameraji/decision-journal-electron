@@ -68,6 +68,7 @@ interface ItemRow {
   model_id: string | null
   prompt_version: number | null
   supersedes: string | null
+  question: string | null
   created_at: number
   updated_at: number
 }
@@ -134,13 +135,15 @@ function rowsToItems(db: DB, rows: ItemRow[]): MemoryItem[] {
     modelId: r.model_id,
     promptVersion: r.prompt_version,
     supersedes: r.supersedes,
+    question: r.question,
     createdAt: r.created_at,
     updatedAt: r.updated_at
   }))
 }
 
 const ITEM_COLUMNS = `id, category, statement, kind, state, user_authored, applicable_date,
-                      domain, model_id, prompt_version, supersedes, created_at, updated_at`
+                      domain, model_id, prompt_version, supersedes, question,
+                      created_at, updated_at`
 
 export function listItems(db: DB, states?: MemoryState[]): MemoryItem[] {
   if (!states || states.length === 0) {
@@ -183,6 +186,23 @@ export interface ProposalInput {
   applicableDate: string | null
   domain: string | null
   supersedesStatement: string | null
+  /** Only set for tentative items; the question to put to the user. */
+  question: string | null
+}
+
+/**
+ * Where a proposal lands.
+ *
+ * An `explicit` item has already cleared the strongest check we have: the quote
+ * it cites was verified verbatim against the user's own writing. Asking someone
+ * to approve their own sentence back to them is theatre, and burying two
+ * genuine uncertainties under thirty of them makes review worse, not safer. So
+ * quoted fact goes straight to approved and stays fully editable, while a
+ * `tentative` reading — the model's inference, which the user never wrote — is
+ * the only thing that interrupts them.
+ */
+export function initialStateFor(kind: MemoryKind): MemoryState {
+  return kind === 'tentative' ? 'pending' : 'approved'
 }
 
 /**
@@ -240,19 +260,21 @@ export function insertProposals(
         db.prepare(
           `INSERT INTO memory_items
              (id, category, statement, kind, state, user_authored, applicable_date, domain,
-              model_id, prompt_version, supersedes, created_at, updated_at)
-           VALUES (@id, @category, @statement, @kind, 'pending', 0, @applicableDate, @domain,
-                   @modelId, @promptVersion, @supersedes, @now, @now)`
+              model_id, prompt_version, supersedes, question, created_at, updated_at)
+           VALUES (@id, @category, @statement, @kind, @state, 0, @applicableDate, @domain,
+                   @modelId, @promptVersion, @supersedes, @question, @now, @now)`
         ).run({
           id: itemId,
           category: p.category,
           statement: p.statement,
           kind: p.kind,
+          state: initialStateFor(p.kind),
           applicableDate: p.applicableDate,
           domain: p.domain,
           modelId: params.modelId,
           promptVersion: params.promptVersion,
           supersedes,
+          question: p.question,
           now
         })
         inserted += 1
@@ -274,6 +296,22 @@ export function setItemState(db: DB, id: string, state: MemoryState): void {
     Date.now(),
     id
   )
+}
+
+/**
+ * The user's answer to an open question becomes the memory.
+ *
+ * They wrote it, so it stops being the model's tentative reading and becomes an
+ * explicit, user-authored fact — approved immediately, with the question
+ * cleared and the original source link intact.
+ */
+export function answerQuestion(db: DB, id: string, answer: string): void {
+  db.prepare(
+    `UPDATE memory_items
+        SET statement = ?, kind = 'explicit', state = 'approved',
+            user_authored = 1, question = NULL, updated_at = ?
+      WHERE id = ?`
+  ).run(answer, Date.now(), id)
 }
 
 export function updateStatement(db: DB, id: string, statement: string): void {
@@ -322,8 +360,8 @@ export function addUserMemory(
   db.prepare(
     `INSERT INTO memory_items
        (id, category, statement, kind, state, user_authored, applicable_date, domain,
-        model_id, prompt_version, supersedes, created_at, updated_at)
-     VALUES (?, ?, ?, 'explicit', 'approved', 1, NULL, NULL, NULL, NULL, NULL, ?, ?)`
+        model_id, prompt_version, supersedes, question, created_at, updated_at)
+     VALUES (?, ?, ?, 'explicit', 'approved', 1, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?)`
   ).run(id, params.category, params.statement, now, now)
   const created = getItem(db, id)
   if (!created) throw new Error('Failed to read back the new memory')
@@ -381,12 +419,20 @@ export function pruneOrphanedItems(db: DB): number {
   return result.changes
 }
 
+/**
+ * Returns memory to the state a first-time user would see.
+ *
+ * This previously left `memory_suppressions` behind, so a rejection made months
+ * ago silently kept its statement from ever being proposed again — the one
+ * thing a user pressing "forget everything" would least expect to persist. The
+ * job history goes too: it names decisions and is of no use once the memories
+ * derived from it are gone.
+ */
 export function forgetAll(db: DB): void {
   const tx = db.transaction(() => {
     db.prepare('DELETE FROM memory_items').run()
-    db.prepare("UPDATE memory_jobs SET state = 'cancelled', updated_at = ? WHERE state IN ('queued','running')").run(
-      Date.now()
-    )
+    db.prepare('DELETE FROM memory_suppressions').run()
+    db.prepare('DELETE FROM memory_jobs').run()
     setMemoryEnabled(db, false)
   })
   tx()

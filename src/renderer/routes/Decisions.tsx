@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus } from 'lucide-react'
+import { AlertTriangle, Plus } from 'lucide-react'
 import type { Decision } from '@shared/ipc-contract'
 import DecisionCard from '../components/DecisionCard'
 import ReauthModal from '../components/ReauthModal'
@@ -10,6 +10,8 @@ export default function Decisions() {
   const navigate = useNavigate()
   const results = useDecisionsStore((s) => s.results)
   const query = useDecisionsStore((s) => s.query)
+  const error = useDecisionsStore((s) => s.error)
+  const loadAll = useDecisionsStore((s) => s.loadAll)
   const refresh = useDecisionsStore((s) => s.refresh)
   const [toDelete, setToDelete] = useState<Decision | null>(null)
 
@@ -37,11 +39,13 @@ export default function Decisions() {
             Your Decisions
           </h1>
           <p className="mt-1 text-[13px] text-text-muted">
-            {searching
-              ? empty
-                ? `No decisions match "${trimmedQuery}"`
-                : `${results.length} result${results.length === 1 ? '' : 's'} for "${trimmedQuery}"`
-              : `${results.length} decision${results.length === 1 ? '' : 's'} recorded`}
+            {error
+              ? 'Could not read your journal'
+              : searching
+                ? empty
+                  ? `No decisions match "${trimmedQuery}"`
+                  : `${results.length} result${results.length === 1 ? '' : 's'} for "${trimmedQuery}"`
+                : `${results.length} decision${results.length === 1 ? '' : 's'} recorded`}
           </p>
         </div>
         <button
@@ -54,7 +58,34 @@ export default function Decisions() {
         </button>
       </div>
 
-      {empty && !searching ? (
+      {error ? (
+        <div className="mt-8 rounded-2xl border border-red-500/40 bg-red-500/5 px-6 py-6">
+          <div className="flex items-start gap-3">
+            <AlertTriangle
+              size={18}
+              strokeWidth={1.75}
+              className="mt-0.5 shrink-0 text-red-600 dark:text-red-400"
+            />
+            <div className="min-w-0">
+              <p className="text-[15px] font-medium text-text">Your journal could not be read</p>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-text-muted">
+                This is a problem reading the database — it does{' '}
+                <span className="font-medium text-text">not</span> mean your decisions are gone.
+                Nothing has been deleted. Quit the app and reopen it; if this persists, restore
+                your most recent backup rather than creating new entries on top of it.
+              </p>
+              <p className="mt-2 font-mono text-[11px] text-text-muted/80">{error}</p>
+              <button
+                type="button"
+                onClick={() => void loadAll()}
+                className="mt-3 rounded-md border border-border bg-bg px-3 py-1.5 text-[12px] text-text hover:bg-nav-active"
+              >
+                Try again
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : empty && !searching ? (
         <div className="mt-16 rounded-2xl border border-dashed border-border bg-bg-elevated/40 px-8 py-16 text-center">
           <p className="font-serif text-[22px] text-text">No decisions yet</p>
           <p className="mt-2 text-[13px] text-text-muted">

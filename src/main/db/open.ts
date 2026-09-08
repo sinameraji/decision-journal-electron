@@ -183,6 +183,7 @@ const MIGRATIONS: Migration[] = [
         model_id        TEXT,
         prompt_version  INTEGER,
         supersedes      TEXT,
+        question        TEXT,
         created_at      INTEGER NOT NULL,
         updated_at      INTEGER NOT NULL
       );
@@ -260,48 +261,118 @@ function runMigrations(db: DB): void {
   })
   apply()
 
-  // A version number is a claim, not proof. If a database was ever stamped
-  // ahead of the schema it actually has, every later query fails with an
-  // unhelpful "no such column" at runtime. Verify and repair instead.
-  const conversationColumns = new Set(
-    (db.pragma('table_info(conversations)') as { name: string }[]).map((c) => c.name)
+  ensureSchema(db)
+  setVersion.run(String(target))
+}
+
+/** Columns every table must have for the current code to run. */
+const REQUIRED_COLUMNS: { table: string; column: string; definition: string }[] = [
+  // Migration 5
+  { table: 'conversations', column: 'provider', definition: `TEXT NOT NULL DEFAULT 'ollama'` },
+  { table: 'conversations', column: 'attachments', definition: `TEXT NOT NULL DEFAULT '[]'` },
+  { table: 'conversations', column: 'online_consent', definition: 'INTEGER NOT NULL DEFAULT 0' },
+  { table: 'chat_messages', column: 'status', definition: `TEXT NOT NULL DEFAULT 'complete'` },
+  { table: 'chat_messages', column: 'provider', definition: 'TEXT' },
+  { table: 'chat_messages', column: 'model_id', definition: 'TEXT' },
+  { table: 'chat_messages', column: 'seq', definition: 'INTEGER NOT NULL DEFAULT 0' },
+  // Migration 6
+  { table: 'decisions', column: 'memory_excluded', definition: 'INTEGER NOT NULL DEFAULT 0' },
+  { table: 'conversations', column: 'include_memories', definition: 'INTEGER NOT NULL DEFAULT 0' },
+  { table: 'memory_items', column: 'question', definition: 'TEXT' }
+]
+
+/** Tables the current code needs, with the SQL to recreate an absent one. */
+const REQUIRED_TABLES: { name: string; sql: string }[] = [
+  {
+    name: 'memory_items',
+    sql: `CREATE TABLE IF NOT EXISTS memory_items (
+      id TEXT PRIMARY KEY, category TEXT NOT NULL, statement TEXT NOT NULL,
+      kind TEXT NOT NULL, state TEXT NOT NULL, user_authored INTEGER NOT NULL DEFAULT 0,
+      applicable_date TEXT, domain TEXT, model_id TEXT, prompt_version INTEGER,
+      supersedes TEXT, question TEXT,
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`
+  },
+  {
+    name: 'memory_sources',
+    sql: `CREATE TABLE IF NOT EXISTS memory_sources (
+      id TEXT PRIMARY KEY,
+      item_id TEXT NOT NULL REFERENCES memory_items(id) ON DELETE CASCADE,
+      decision_id TEXT REFERENCES decisions(id) ON DELETE CASCADE,
+      field TEXT NOT NULL, excerpt TEXT NOT NULL, revision INTEGER NOT NULL,
+      created_at INTEGER NOT NULL)`
+  },
+  {
+    name: 'memory_jobs',
+    sql: `CREATE TABLE IF NOT EXISTS memory_jobs (
+      id TEXT PRIMARY KEY,
+      decision_id TEXT NOT NULL REFERENCES decisions(id) ON DELETE CASCADE,
+      content_revision INTEGER NOT NULL, prompt_version INTEGER NOT NULL,
+      consent_generation INTEGER NOT NULL, state TEXT NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT,
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`
+  },
+  {
+    name: 'memory_suppressions',
+    sql: `CREATE TABLE IF NOT EXISTS memory_suppressions (
+      id TEXT PRIMARY KEY, normalized TEXT NOT NULL, category TEXT NOT NULL,
+      created_at INTEGER NOT NULL)`
+  }
+]
+
+function tableExists(db: DB, name: string): boolean {
+  const row = db
+    .prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?`)
+    .get(name)
+  return row !== undefined
+}
+
+function columnNames(db: DB, table: string): Set<string> {
+  if (!tableExists(db, table)) return new Set()
+  return new Set((db.pragma(`table_info(${table})`) as { name: string }[]).map((c) => c.name))
+}
+
+/**
+ * Brings the schema up to what the code requires, regardless of what
+ * `schema_version` claims.
+ *
+ * A version stamp is a claim, not proof. A database stamped 6 while missing
+ * migration 5 and 6's columns caused every `decisions:list` to fail with "no
+ * such column", which the UI rendered as an empty journal — the most alarming
+ * possible failure for this app. Deriving the work to do from the actual schema
+ * removes the whole class of problem, and every statement here is a no-op on a
+ * healthy database.
+ */
+export function ensureSchema(db: DB): void {
+  const repaired: string[] = []
+
+  for (const t of REQUIRED_TABLES) {
+    if (!tableExists(db, t.name)) {
+      db.exec(t.sql)
+      repaired.push(`table ${t.name}`)
+    }
+  }
+
+  for (const c of REQUIRED_COLUMNS) {
+    if (!tableExists(db, c.table)) continue
+    if (columnNames(db, c.table).has(c.column)) continue
+    db.exec(`ALTER TABLE ${c.table} ADD COLUMN ${c.column} ${c.definition}`)
+    repaired.push(`${c.table}.${c.column}`)
+  }
+
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_memory_items_state ON memory_items(state, updated_at DESC)`)
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_memory_sources_item ON memory_sources(item_id)`)
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_memory_sources_decision ON memory_sources(decision_id)`)
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_memory_jobs_state ON memory_jobs(state, created_at ASC)`)
+  db.exec(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_jobs_pending ON memory_jobs(decision_id) WHERE state IN ('queued','running')`
   )
-  const missing = ['provider', 'attachments', 'online_consent'].filter(
-    (c) => !conversationColumns.has(c)
+  db.exec(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_suppressions_key ON memory_suppressions(category, normalized)`
   )
-  if (conversationColumns.size > 0 && missing.length > 0) {
-    console.warn(
-      `[db] schema_version claims ${current >= 5 ? current : target} but conversations is missing: ${missing.join(', ')} — repairing`
-    )
-    const repair = db.transaction(() => {
-      if (missing.includes('provider')) {
-        db.exec(`ALTER TABLE conversations ADD COLUMN provider TEXT NOT NULL DEFAULT 'ollama'`)
-      }
-      if (missing.includes('attachments')) {
-        db.exec(`ALTER TABLE conversations ADD COLUMN attachments TEXT NOT NULL DEFAULT '[]'`)
-      }
-      if (missing.includes('online_consent')) {
-        db.exec(`ALTER TABLE conversations ADD COLUMN online_consent INTEGER NOT NULL DEFAULT 0`)
-      }
-      const messageColumns = new Set(
-        (db.pragma('table_info(chat_messages)') as { name: string }[]).map((c) => c.name)
-      )
-      if (!messageColumns.has('status')) {
-        db.exec(`ALTER TABLE chat_messages ADD COLUMN status TEXT NOT NULL DEFAULT 'complete'`)
-      }
-      if (!messageColumns.has('provider')) {
-        db.exec(`ALTER TABLE chat_messages ADD COLUMN provider TEXT`)
-      }
-      if (!messageColumns.has('model_id')) {
-        db.exec(`ALTER TABLE chat_messages ADD COLUMN model_id TEXT`)
-      }
-      if (!messageColumns.has('seq')) {
-        db.exec(`ALTER TABLE chat_messages ADD COLUMN seq INTEGER NOT NULL DEFAULT 0`)
-      }
-      setVersion.run(String(target))
-    })
-    repair()
-    console.log('[db] repair complete')
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_chat_messages_seq ON chat_messages(conversation_id, seq ASC)`)
+
+  if (repaired.length > 0) {
+    console.warn(`[db] schema was incomplete; added ${repaired.join(', ')}`)
   }
 }
 

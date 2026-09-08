@@ -106,6 +106,8 @@ const api: Api = {
     delete: (id: string): Promise<MemoryActionResult> => ipcRenderer.invoke('memory:delete', id),
     updateStatement: (id: string, statement: string): Promise<MemoryActionResult> =>
       ipcRenderer.invoke('memory:update-statement', id, statement),
+    answer: (id: string, text: string): Promise<MemoryActionResult> =>
+      ipcRenderer.invoke('memory:answer', id, text),
     add: (category: MemoryCategory, statement: string): Promise<MemoryActionResult> =>
       ipcRenderer.invoke('memory:add', category, statement),
     forgetAll: (): Promise<MemoryActionResult> => ipcRenderer.invoke('memory:forget-all'),

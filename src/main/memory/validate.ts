@@ -13,7 +13,15 @@ import { isMemoryCategory, type MemoryKind } from '@shared/memory'
 import { decisionSections } from '../ai/decisionSections'
 import type { ProposalInput } from './store'
 
-export const MAX_ITEMS_PER_DECISION = 12
+/**
+ * Was 12, and extraction hit the cap on every entry — three decisions produced
+ * 36 items to review, which is not a review queue, it is a wall. The prompt now
+ * asks for durable context rather than a restatement, and these are the hard
+ * ceilings behind it.
+ */
+export const MAX_ITEMS_PER_DECISION = 6
+/** Tentative items are the only ones a person is actually asked about. */
+export const MAX_TENTATIVE_PER_DECISION = 2
 export const MAX_STATEMENT_CHARS = 240
 export const MIN_EXCERPT_CHARS = 8
 export const MAX_EXCERPT_CHARS = 400
@@ -28,6 +36,8 @@ export type RejectionReason =
   | 'excerpt-not-found'
   | 'suppressed'
   | 'over-limit'
+  | 'too-many-tentative'
+  | 'tentative-without-question'
 
 export interface ValidationResult {
   accepted: ProposalInput[]
@@ -76,6 +86,7 @@ interface RawItem {
   applicableDate?: unknown
   domain?: unknown
   supersedesStatement?: unknown
+  question?: unknown
 }
 
 function optionalString(value: unknown, max: number): string | null {
@@ -104,6 +115,7 @@ export function validateProposals(
 
   const fields = decisionFields(decision)
   const seen = new Set<string>()
+  let tentativeCount = 0
 
   for (const item of items) {
     if (item == null || typeof item !== 'object') {
@@ -155,6 +167,21 @@ export function validateProposals(
       continue
     }
 
+    const question = optionalString(item.question, 240)
+    if (kind === 'tentative') {
+      // A tentative item the model cannot frame a question about is not worth
+      // interrupting the user for.
+      if (!question) {
+        rejected.push({ statement, reason: 'tentative-without-question' })
+        continue
+      }
+      if (tentativeCount >= MAX_TENTATIVE_PER_DECISION) {
+        rejected.push({ statement, reason: 'too-many-tentative' })
+        continue
+      }
+      tentativeCount += 1
+    }
+
     accepted.push({
       category: item.category,
       statement,
@@ -163,7 +190,9 @@ export function validateProposals(
       excerpt: excerpt.slice(0, MAX_EXCERPT_CHARS),
       applicableDate: normalizeDate(item.applicableDate),
       domain: optionalString(item.domain, 60),
-      supersedesStatement: optionalString(item.supersedesStatement, MAX_STATEMENT_CHARS)
+      supersedesStatement: optionalString(item.supersedesStatement, MAX_STATEMENT_CHARS),
+      // Only a tentative item carries a question; anything else is noise.
+      question: kind === 'tentative' ? question : null
     })
   }
 

@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { Fingerprint, Lock, Mic, Download, Trash2, Loader2, CheckCircle2, AlertTriangle, HardDriveDownload, Heart, RefreshCw } from 'lucide-react'
 import PinPad from '../components/PinPad'
 import SupportModal from '../components/SupportModal'
@@ -9,6 +10,26 @@ import { useTranscriptionStore } from '../store/transcription'
 import type { WhisperModelInfo, UpdateStatus } from '@shared/ipc-contract'
 
 export default function Settings() {
+  // Deep link target. The app uses HashRouter, so the URL hash is taken by the
+  // router itself and cannot be used as an anchor — the section comes through
+  // router state instead.
+  const location = useLocation()
+  const requestedSection = (location.state as { section?: string } | null)?.section ?? null
+  const [highlighted, setHighlighted] = useState<string | null>(null)
+  const scrolledFor = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!requestedSection || scrolledFor.current === requestedSection) return
+    const el = document.getElementById(`settings-${requestedSection}`)
+    if (!el) return
+    scrolledFor.current = requestedSection
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    // A brief ring, so it is obvious which section you were sent to.
+    setHighlighted(requestedSection)
+    const t = setTimeout(() => setHighlighted(null), 2000)
+    return () => clearTimeout(t)
+  }, [requestedSection])
+
   const status = useAuthStore((s) => s.status)!
   const refreshStatus = useAuthStore((s) => s.refreshStatus)
   const lock = useAuthStore((s) => s.lock)
@@ -258,7 +279,7 @@ export default function Settings() {
 
       <OnlineAiSettings />
 
-      <MemorySettingsSection />
+      <MemorySettingsSection highlighted={highlighted === 'memory'} />
 
       <section className="mt-8">
         <h2 className="mb-3 text-[13px] font-semibold uppercase tracking-wide text-text-muted">

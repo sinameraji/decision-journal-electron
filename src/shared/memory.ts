@@ -91,6 +91,11 @@ export interface MemoryItem {
   promptVersion: number | null
   /** Item this one replaces, if it supersedes an earlier statement. */
   supersedes: string | null
+  /**
+   * For tentative items only: the open question the model would ask to settle
+   * it. Review is a conversation about what is uncertain, not a yes/no queue.
+   */
+  question: string | null
   createdAt: number
   updatedAt: number
 }

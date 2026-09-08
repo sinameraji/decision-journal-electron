@@ -304,6 +304,8 @@ export interface Api {
     reject(id: string): Promise<MemoryActionResult>
     delete(id: string): Promise<MemoryActionResult>
     updateStatement(id: string, statement: string): Promise<MemoryActionResult>
+    /** Answering an open question turns it into a memory in the user's words. */
+    answer(id: string, answer: string): Promise<MemoryActionResult>
     add(category: MemoryCategory, statement: string): Promise<MemoryActionResult>
     forgetAll(): Promise<MemoryActionResult>
     estimateBackfill(decisionIds: string[]): Promise<MemoryBackfillEstimate>

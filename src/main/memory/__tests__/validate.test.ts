@@ -3,6 +3,7 @@ import type { Decision } from '@shared/ipc-contract'
 import { serializeOptions } from '@shared/ipc-contract'
 import { normalizeStatement } from '@shared/memory'
 import { renderDecision } from '../../ai/decisionSections'
+import { initialStateFor } from '../store'
 import { decisionFields, locateExcerpt, validateProposals } from '../validate'
 
 const DECISION: Decision = {
@@ -43,6 +44,7 @@ function proposal(patch: Record<string, unknown> = {}) {
     applicableDate: null,
     domain: 'career',
     supersedesStatement: null,
+    question: null,
     ...patch
   }
 }
@@ -158,7 +160,7 @@ describe('validateProposals', () => {
       proposal({ statement: `Distinct statement number ${i} about ten hours weekly.` })
     )
     const { accepted, rejected } = validateProposals({ items: many }, DECISION, never)
-    expect(accepted).toHaveLength(12)
+    expect(accepted).toHaveLength(6)
     expect(rejected.every((r) => r.reason === 'over-limit')).toBe(true)
   })
 
@@ -245,5 +247,71 @@ describe('the validator searches exactly what the model was shown', () => {
 
   it('still rejects text that appears nowhere in the entry', () => {
     expect(locateExcerpt(fields, 'They have always been risk averse')).toBeNull()
+  })
+})
+
+/**
+ * Three decisions once produced 36 items to approve, because extraction hit the
+ * 12-item cap every time and everything needed review. Quoted fact is now kept
+ * automatically; only the model's own guesses are put to the user, and only a
+ * couple per entry.
+ */
+describe('what actually reaches the user', () => {
+  it('sends verified quotes straight to approved', () => {
+    expect(initialStateFor('explicit')).toBe('approved')
+    expect(initialStateFor('self-described')).toBe('approved')
+  })
+
+  it('only a model inference is put to the user', () => {
+    expect(initialStateFor('tentative')).toBe('pending')
+  })
+
+  it('drops a tentative item the model cannot frame a question about', () => {
+    const { accepted, rejected } = validateProposals(
+      { items: [proposal({ kind: 'tentative', question: null })] },
+      DECISION,
+      never
+    )
+    expect(accepted).toEqual([])
+    expect(rejected[0].reason).toBe('tentative-without-question')
+  })
+
+  it('keeps a tentative item that comes with a question', () => {
+    const { accepted } = validateProposals(
+      {
+        items: [
+          proposal({
+            kind: 'tentative',
+            question: 'How much of the ten hours is realistically uninterrupted?'
+          })
+        ]
+      },
+      DECISION,
+      never
+    )
+    expect(accepted).toHaveLength(1)
+    expect(accepted[0].question).toMatch(/uninterrupted/)
+  })
+
+  it('never asks more than two questions about one decision', () => {
+    const many = Array.from({ length: 6 }, (_, i) =>
+      proposal({
+        kind: 'tentative',
+        statement: `Tentative reading ${i} about ten hours weekly.`,
+        question: `Question ${i}?`
+      })
+    )
+    const { accepted, rejected } = validateProposals({ items: many }, DECISION, never)
+    expect(accepted).toHaveLength(2)
+    expect(rejected.every((r) => r.reason === 'too-many-tentative')).toBe(true)
+  })
+
+  it('strips a question from an item that is not tentative', () => {
+    const { accepted } = validateProposals(
+      { items: [proposal({ kind: 'explicit', question: 'Should not be asked?' })] },
+      DECISION,
+      never
+    )
+    expect(accepted[0].question).toBeNull()
   })
 })

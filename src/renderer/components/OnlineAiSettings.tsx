@@ -85,7 +85,7 @@ export default function OnlineAiSettings() {
   if (!settings) return null
 
   return (
-    <section className="mt-8">
+    <section id="settings-online" className="mt-8 scroll-mt-6">
       <h2 className="mb-3 text-[13px] font-semibold uppercase tracking-wide text-text-muted">
         Online AI (optional)
       </h2>

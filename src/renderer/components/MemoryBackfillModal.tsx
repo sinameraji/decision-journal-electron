@@ -87,14 +87,29 @@ export default function MemoryBackfillModal({ onClose }: { onClose: () => void }
               className="w-full bg-transparent text-[12.5px] text-text placeholder:text-text-muted focus:outline-none"
             />
           </div>
+          {/* Was bare underlined text and read as a label rather than a control. */}
           <button
             type="button"
             onClick={() =>
               setPicked(picked.length === filtered.length ? [] : filtered.map((d) => d.id))
             }
-            className="mt-2 text-[11.5px] text-text-muted underline-offset-2 hover:text-text hover:underline"
+            className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-border bg-bg px-2.5 py-1.5 text-[11.5px] text-text hover:bg-nav-active"
           >
-            {picked.length === filtered.length ? 'Clear selection' : 'Select all shown'}
+            <span
+              className={[
+                'flex h-3.5 w-3.5 items-center justify-center rounded border',
+                picked.length > 0 && picked.length === filtered.length
+                  ? 'border-[rgb(var(--accent))] bg-[rgb(var(--accent))] text-accent-text dark:border-text dark:bg-text dark:text-bg'
+                  : 'border-border bg-bg-elevated'
+              ].join(' ')}
+            >
+              {picked.length > 0 && picked.length === filtered.length && (
+                <Check size={9} strokeWidth={3} />
+              )}
+            </span>
+            {picked.length === filtered.length && filtered.length > 0
+              ? 'Clear selection'
+              : `Select all ${filtered.length} shown`}
           </button>
         </div>
 

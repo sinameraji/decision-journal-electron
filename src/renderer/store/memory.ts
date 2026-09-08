@@ -15,6 +15,7 @@ interface MemoryState {
   reject: (id: string) => Promise<void>
   remove: (id: string) => Promise<void>
   updateStatement: (id: string, statement: string) => Promise<string | null>
+  answer: (id: string, text: string) => Promise<string | null>
   forgetAll: () => Promise<void>
   reset: () => void
 }
@@ -78,6 +79,12 @@ export const useMemoryStore = create<MemoryState>((set, get) => ({
 
   updateStatement: async (id, statement) => {
     const res = await window.api.memory.updateStatement(id, statement)
+    await get().refresh()
+    return res.ok ? null : res.error
+  },
+
+  answer: async (id, text) => {
+    const res = await window.api.memory.answer(id, text)
     await get().refresh()
     return res.ok ? null : res.error
   },

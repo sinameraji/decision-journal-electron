@@ -85,6 +85,7 @@ import {
 } from './memory/queue'
 import {
   addUserMemory,
+  answerQuestion,
   cancelAllJobs,
   countByState,
   deleteItem,
@@ -745,6 +746,19 @@ export function registerIpcHandlers(): void {
       if (!trimmed) return { ok: false, error: 'A memory cannot be empty.' }
       if (trimmed.length > 240) return { ok: false, error: 'Keep it under 240 characters.' }
       addUserMemory(session.db, { category, statement: trimmed })
+      return { ok: true }
+    }
+  )
+
+  ipcMain.handle(
+    'memory:answer',
+    async (_evt, id: string, answer: string): Promise<MemoryActionResult> => {
+      if (!session.db) return { ok: false, error: 'Journal is locked.' }
+      if (typeof id !== 'string') return { ok: false, error: 'Invalid id.' }
+      const trimmed = typeof answer === 'string' ? answer.trim() : ''
+      if (!trimmed) return { ok: false, error: 'Write an answer first.' }
+      if (trimmed.length > 240) return { ok: false, error: 'Keep it under 240 characters.' }
+      answerQuestion(session.db, id, trimmed)
       return { ok: true }
     }
   )

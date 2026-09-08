@@ -16,10 +16,12 @@ import {
   MEMORY_CATEGORY_LABELS,
   MEMORY_KIND_LABELS,
   type MemoryCategory,
-  type MemoryItem
+  type MemoryItem,
+  type MemorySettings
 } from '@shared/memory'
 import { useMemoryStore } from '../store/memory'
 import MemoryBackfillModal from '../components/MemoryBackfillModal'
+import MemoryConsentModal from '../components/MemoryConsentModal'
 
 type Tab = 'pending' | 'approved' | 'stale'
 
@@ -35,6 +37,8 @@ export default function Memory() {
   const [showForget, setShowForget] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
   const [showBackfill, setShowBackfill] = useState(false)
+  const [showConsent, setShowConsent] = useState(false)
+  const setEnabled = useMemoryStore((s) => s.setEnabled)
 
   useEffect(() => {
     void init()
@@ -68,12 +72,17 @@ export default function Memory() {
       <h1 className="font-serif text-[34px] font-medium leading-tight tracking-tight text-text">
         Memory
       </h1>
-      <p className="mt-1 max-w-[600px] text-[13px] leading-relaxed text-text-muted">
-        What the coach is allowed to remember about you across conversations. Every proposal
-        carries the exact words it came from, and nothing is used until you approve it.
+      <p className="mt-1 max-w-[620px] text-[13px] leading-relaxed text-text-muted">
+        What the coach is allowed to remember about you across conversations. Facts quoted
+        verbatim from your own entries are kept automatically — you can edit or delete any of
+        them. Only the model’s own guesses are put to you, as questions.
       </p>
 
-      {!settings.enabled && <DisabledBanner blocked={settings.blockedByOnlineDisabled} />}
+      <StatusCard
+        settings={settings}
+        onEnable={() => setShowConsent(true)}
+        onDisable={() => void setEnabled(false)}
+      />
 
       {settings.enabled && (
         <div className="mt-5 flex flex-wrap items-center gap-2">
@@ -120,7 +129,7 @@ export default function Memory() {
 
       <div className="mt-6 flex gap-1 border-b border-border">
         <TabButton active={tab === 'pending'} onClick={() => setTab('pending')}>
-          Waiting for you {counts.pending > 0 && <Badge>{counts.pending}</Badge>}
+          Open questions {counts.pending > 0 && <Badge>{counts.pending}</Badge>}
         </TabButton>
         <TabButton active={tab === 'approved'} onClick={() => setTab('approved')}>
           Approved {counts.approved > 0 && <Badge>{counts.approved}</Badge>}
@@ -146,36 +155,138 @@ export default function Memory() {
       }} />}
 
       {showAdd && <AddMemoryModal onClose={() => setShowAdd(false)} />}
+      {showConsent && (
+        <MemoryConsentModal
+          onCancel={() => setShowConsent(false)}
+          onAccept={async () => {
+            setShowConsent(false)
+            await setEnabled(true)
+          }}
+        />
+      )}
       {showBackfill && <MemoryBackfillModal onClose={() => setShowBackfill(false)} />}
     </div>
   )
 }
 
-function DisabledBanner({ blocked }: { blocked: boolean }) {
+/**
+ * On/off state at a glance, with the switch here rather than only in Settings.
+ * Colour carries the state: green when running, red when off, amber when it is
+ * blocked by something the user has to fix elsewhere.
+ */
+function StatusCard({
+  settings,
+  onEnable,
+  onDisable
+}: {
+  settings: MemorySettings
+  onEnable: () => void
+  onDisable: () => void
+}) {
+  const blocked = settings.blockedByOnlineDisabled
+  const on = settings.enabled
+
+  const tone = on
+    ? 'border-emerald-500/40 bg-emerald-500/5'
+    : blocked
+      ? 'border-amber-500/40 bg-amber-500/5'
+      : 'border-red-500/40 bg-red-500/5'
+
+  const dot = on ? 'bg-emerald-500' : blocked ? 'bg-amber-500' : 'bg-red-500'
+
+  const label = on ? 'Memory is on' : blocked ? 'Memory is unavailable' : 'Memory is off'
+
+  const labelTone = on
+    ? 'text-emerald-700 dark:text-emerald-400'
+    : blocked
+      ? 'text-amber-700 dark:text-amber-400'
+      : 'text-red-600 dark:text-red-400'
+
   return (
-    <div className="mt-5 rounded-xl border border-border bg-bg-elevated px-5 py-4">
-      <div className="text-[13.5px] font-medium text-text">Memory is off</div>
-      <p className="mt-1 text-[12.5px] leading-relaxed text-text-muted">
-        {blocked
-          ? 'Memory needs online AI, which is currently off. Extraction sends a decision to the model you chose after you save it, so both have to be on.'
-          : 'Turn it on in Settings → Memory. It is separate from online chat because extraction sends a decision automatically after you save it, rather than only when you press send.'}
-      </p>
-      <Link
-        to="/settings"
-        className="mt-3 inline-flex rounded-md border border-border bg-bg px-3 py-1.5 text-[12px] text-text hover:bg-nav-active"
-      >
-        Open Settings
-      </Link>
+    <div className={`mt-5 rounded-xl border px-5 py-4 ${tone}`}>
+      <div className="flex items-center gap-4">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className={`h-2 w-2 shrink-0 rounded-full ${dot}`} />
+            <span className={`text-[14px] font-medium ${labelTone}`}>{label}</span>
+          </div>
+          <p className="mt-1 text-[12.5px] leading-relaxed text-text-muted">
+            {on ? (
+              <>
+                {settings.approvedCount} approved · {settings.pendingCount} waiting for review.
+                Extraction runs after you save a decision, on{' '}
+                <span className="font-mono text-[11.5px]">{settings.modelId}</span>.
+              </>
+            ) : blocked ? (
+              <>
+                Memory needs online AI, which is off. Extraction sends a decision to a model after
+                you save it, so both have to be on.
+              </>
+            ) : (
+              <>
+                Separate from online chat, because extraction sends a decision automatically after
+                you save it rather than only when you press send.
+              </>
+            )}
+          </p>
+        </div>
+
+        {blocked ? (
+          <SettingsLink section="online" label="Turn on online AI" />
+        ) : (
+          <div className="flex shrink-0 items-center gap-2">
+            <SettingsLink section="memory" label="Settings" subtle />
+            <button
+              type="button"
+              onClick={on ? onDisable : onEnable}
+              className={[
+                'rounded-md border px-3 py-1.5 text-[12px] font-medium',
+                on
+                  ? 'border-border bg-bg text-text hover:bg-nav-active'
+                  : 'border-[rgb(var(--accent))] bg-[rgb(var(--accent))] text-accent-text hover:opacity-90 dark:border-border dark:bg-transparent dark:text-text'
+              ].join(' ')}
+            >
+              {on ? 'Turn off' : 'Turn on'}
+            </button>
+          </div>
+        )}
+      </div>
     </div>
+  )
+}
+
+/** Sends the user to the right part of Settings, not the top of the page. */
+function SettingsLink({
+  section,
+  label,
+  subtle
+}: {
+  section: 'memory' | 'online'
+  label: string
+  subtle?: boolean
+}) {
+  return (
+    <Link
+      to="/settings"
+      state={{ section }}
+      className={[
+        'shrink-0 rounded-md px-3 py-1.5 text-[12px]',
+        subtle
+          ? 'text-text-muted hover:text-text'
+          : 'border border-border bg-bg text-text hover:bg-nav-active'
+      ].join(' ')}
+    >
+      {label}
+    </Link>
   )
 }
 
 function EmptyTab({ tab, enabled }: { tab: Tab; enabled: boolean }) {
   const copy: Record<Tab, string> = {
     pending: enabled
-      ? 'Nothing waiting. New proposals appear here after you save a decision.'
+      ? 'Nothing to settle. Facts quoted from your own writing are kept automatically — you only end up here when the model is unsure about something and wants to ask.'
       : 'Nothing here yet.',
-    approved: 'No approved memories yet. Approve a proposal and it becomes available to chat.',
+    approved: 'No memories yet. Save a decision and anything quoted from it lands here.',
     stale: 'Nothing needs rechecking. Items land here when the decision behind them changes.'
   }
   return (
@@ -195,6 +306,21 @@ function MemoryRow({ item }: { item: MemoryItem }) {
   const [draft, setDraft] = useState(item.statement)
   const [error, setError] = useState<string | null>(null)
   const [showEvidence, setShowEvidence] = useState(false)
+  const [answerText, setAnswerText] = useState('')
+  const [answering, setAnswering] = useState(false)
+  const answer = useMemoryStore((s) => s.answer)
+
+  // An open question is a different interaction from a stored memory: the model
+  // is asking, so the primary action is to reply, not to adjudicate.
+  const isQuestion = item.state === 'pending' && !!item.question
+
+  async function submitAnswer() {
+    if (!answerText.trim() || answering) return
+    setAnswering(true)
+    const err = await answer(item.id, answerText)
+    setAnswering(false)
+    if (err) setError(err)
+  }
 
   async function save() {
     const err = await updateStatement(item.id, draft)
@@ -233,6 +359,12 @@ function MemoryRow({ item }: { item: MemoryItem }) {
             )}
           </div>
 
+          {item.question && item.state === 'pending' && (
+            <p className="mt-1.5 text-[13.5px] font-medium leading-relaxed text-text">
+              {item.question}
+            </p>
+          )}
+
           {editing ? (
             <div className="mt-2">
               <textarea
@@ -265,7 +397,61 @@ function MemoryRow({ item }: { item: MemoryItem }) {
               </div>
             </div>
           ) : (
-            <p className="mt-1.5 text-[13.5px] leading-relaxed text-text">{item.statement}</p>
+            <p
+              className={[
+                'mt-1.5 leading-relaxed',
+                item.question && item.state === 'pending'
+                  ? 'text-[12.5px] text-text-muted'
+                  : 'text-[13.5px] text-text'
+              ].join(' ')}
+            >
+              {item.question && item.state === 'pending' ? 'Its reading: ' : ''}
+              {item.statement}
+            </p>
+          )}
+
+          {isQuestion && (
+            <div className="mt-3">
+              <div className="flex items-end gap-2">
+                <textarea
+                  value={answerText}
+                  onChange={(e) => setAnswerText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      void submitAnswer()
+                    }
+                  }}
+                  rows={2}
+                  placeholder="Answer in a sentence — what you write becomes the memory…"
+                  className="flex-1 resize-none rounded-lg border border-border bg-bg px-3 py-2 text-[13px] leading-relaxed text-text placeholder:text-text-muted focus:border-[rgb(var(--accent))] focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={submitAnswer}
+                  disabled={!answerText.trim() || answering}
+                  className="shrink-0 rounded-lg border border-[rgb(var(--accent))] bg-[rgb(var(--accent))] px-3.5 py-2 text-[12.5px] font-medium text-accent-text hover:opacity-90 disabled:opacity-40 dark:border-border dark:bg-transparent dark:text-text"
+                >
+                  {answering ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+              <div className="mt-2 flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => void reject(item.id)}
+                  className="text-[11.5px] text-text-muted underline-offset-2 hover:text-text hover:underline"
+                >
+                  Not worth remembering
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void approve(item.id)}
+                  className="text-[11.5px] text-text-muted underline-offset-2 hover:text-text hover:underline"
+                >
+                  Its reading is close enough — keep it
+                </button>
+              </div>
+            </div>
           )}
 
           {item.sources.length > 0 && (
@@ -302,25 +488,19 @@ function MemoryRow({ item }: { item: MemoryItem }) {
           )}
         </div>
 
-        {!editing && (
+        {!editing && !isQuestion && (
           <div className="flex shrink-0 items-center gap-1">
             <IconButton title="Edit" onClick={() => setEditing(true)}>
               <Pencil size={12} strokeWidth={2} />
             </IconButton>
             {item.state !== 'approved' && (
-              <IconButton title="Approve" onClick={() => void approve(item.id)}>
+              <IconButton title="Keep this" onClick={() => void approve(item.id)}>
                 <Check size={13} strokeWidth={2.5} />
               </IconButton>
             )}
-            {item.state === 'pending' ? (
-              <IconButton title="Reject — and don't suggest it again" danger onClick={() => void reject(item.id)}>
-                <X size={13} strokeWidth={2.5} />
-              </IconButton>
-            ) : (
-              <IconButton title="Delete" danger onClick={() => void remove(item.id)}>
-                <Trash2 size={12} strokeWidth={2} />
-              </IconButton>
-            )}
+            <IconButton title="Delete" danger onClick={() => void remove(item.id)}>
+              <Trash2 size={12} strokeWidth={2} />
+            </IconButton>
           </div>
         )}
       </div>
@@ -401,8 +581,9 @@ function ForgetAllModal({
         <h3 className="font-serif text-[20px] font-medium text-text">Forget everything?</h3>
         <div className="mt-3 space-y-2 text-[12.5px] leading-relaxed text-text-muted">
           <p>
-            This deletes every memory and pending proposal, cancels anything queued, and turns
-            extraction off. Your decisions themselves are untouched.
+            This deletes every memory, every open question, the record of what you previously
+            rejected, and the extraction history — then turns extraction off. It is a true reset:
+            re-enabling it later starts from nothing. Your decisions themselves are untouched.
           </p>
           <p>
             Two things this cannot undo: chat transcripts you have already saved may still quote
