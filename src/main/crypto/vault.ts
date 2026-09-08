@@ -150,12 +150,16 @@ export class Vault {
     }
 
     let innerBlob: WrappedBlob = file.pinWrappedMasterKey
+    let keychainFailed = false
     if (file.safeStorageDoubleWrapped && isEncryptionAvailable()) {
       try {
         const decoded = keychainUnwrap(file.safeStorageDoubleWrapped)
         innerBlob = JSON.parse(decoded.toString('utf8')) as WrappedBlob
       } catch {
-        // fall back to the on-disk blob; means Keychain is unavailable on this machine
+        // Keychain unavailable, or the item is ACL'd to a different signing
+        // identity — which is what happens when the app is re-signed under a
+        // new Apple team. Fall back to the on-disk blob so the PIN still works.
+        keychainFailed = true
       }
     }
 
@@ -168,6 +172,19 @@ export class Vault {
         file.cooldownUntil = null
         await this.write(file)
       }
+
+      // Re-wrap under whatever identity is running now. Without this the stale
+      // blob is retried on every launch forever, so a user who moved to a build
+      // signed by a different team would never regain Keychain protection.
+      const missingWrap = file.safeStorageDoubleWrapped === null
+      if ((keychainFailed || missingWrap) && isEncryptionAvailable()) {
+        try {
+          await this.sealLocally()
+        } catch {
+          // Best effort: the PIN path already worked, so unlocking still succeeds.
+        }
+      }
+
       return { ok: true, masterKey }
     } catch {
       pinKey.fill(0)
