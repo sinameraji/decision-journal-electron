@@ -5,6 +5,20 @@ import type { UpdateStatus } from '@shared/ipc-contract'
 autoUpdater.autoDownload = false
 autoUpdater.autoInstallOnAppQuit = true
 
+/**
+ * Whether the user is watching for an answer.
+ *
+ * The launch check runs on its own and nobody asked it a question, so a
+ * failure there is not news — GitHub being briefly unreachable, or a release
+ * tag existing before its binaries finish uploading, would otherwise greet the
+ * user with an error about a check they never requested. Those failures stay
+ * silent and the row falls back to offering a check. A failure the user asked
+ * for is reported, because they are waiting on an answer.
+ */
+let userAsked = false
+/** Which action failed, so the message can say the right thing. */
+let phase: 'check' | 'download' = 'check'
+
 function broadcast(status: UpdateStatus): void {
   for (const win of BrowserWindow.getAllWindows()) {
     if (!win.isDestroyed()) {
@@ -40,14 +54,23 @@ autoUpdater.on('update-downloaded', (info) => {
 })
 
 autoUpdater.on('error', (err) => {
-  broadcast({ state: 'error', message: err.message })
+  // The detail is for whoever is reading a terminal, never for the user: they
+  // asked whether an update exists, not how the lookup failed.
+  console.error(`[updater] ${phase} failed: ${err.message}`)
+  broadcast(userAsked ? { state: 'error', phase } : { state: 'idle' })
 })
 
-export async function checkForUpdates(): Promise<void> {
+export async function checkForUpdates(options?: { userAsked?: boolean }): Promise<void> {
+  userAsked = options?.userAsked ?? false
+  phase = 'check'
   await autoUpdater.checkForUpdates()
 }
 
 export async function downloadUpdate(): Promise<void> {
+  // There is no automatic download — autoDownload is off — so reaching here
+  // always means the user pressed the button.
+  userAsked = true
+  phase = 'download'
   await autoUpdater.downloadUpdate()
 }
 

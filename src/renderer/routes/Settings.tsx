@@ -625,7 +625,9 @@ function UpdateRow({ status }: { status: UpdateStatus }) {
     <div className="flex items-center justify-between">
       <span className="text-[12.5px] text-text-muted">
         {status.state === 'error'
-          ? 'Could not check for updates'
+          ? status.phase === 'download'
+            ? "The download didn't finish — try again"
+            : "Couldn't check just now — try again"
           : status.state === 'not-available'
             ? "You're on the latest version"
             : checking

@@ -316,7 +316,7 @@ export type UpdateStatus =
   | { state: 'not-available' }
   | { state: 'downloading'; percent: number }
   | { state: 'downloaded'; version: string }
-  | { state: 'error'; message: string }
+  | { state: 'error'; phase: 'check' | 'download' }
 
 export interface Api {
   vault: {
