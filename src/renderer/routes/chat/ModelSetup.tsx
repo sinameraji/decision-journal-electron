@@ -41,6 +41,8 @@ function Chooser({ onPick }: { onPick: (v: 'local' | 'online') => void }) {
   const installed = useChatStore((s) => s.installed)
   const online = useChatStore((s) => s.online)
   const onlineCatalog = useChatStore((s) => s.onlineCatalog)
+  const activeModel = useChatStore((s) => s.activeModel)
+  const setStage = useChatStore((s) => s.returnToChat)
 
   const ollamaRunning = status?.running === true
   const localReady = ollamaRunning && installed.length > 0
@@ -48,6 +50,19 @@ function Chooser({ onPick }: { onPick: (v: 'local' | 'online') => void }) {
 
   return (
     <div className="mx-auto max-w-[640px] pt-2">
+      {/* Without this the picker is a dead end: no back, no obvious way to the
+          conversation you were just in. */}
+      {activeModel && (
+        <button
+          type="button"
+          onClick={setStage}
+          className="mb-4 inline-flex items-center gap-1.5 rounded-md border border-border bg-bg-elevated px-2.5 py-1.5 text-[12px] text-text-muted hover:text-text"
+        >
+          <ArrowLeft size={13} strokeWidth={1.75} />
+          Back to chat
+        </button>
+      )}
+
       <h1 className="font-serif text-[26px] font-medium leading-tight tracking-tight text-text">
         Where should chat run?
       </h1>

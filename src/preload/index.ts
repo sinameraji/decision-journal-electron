@@ -140,6 +140,9 @@ const api: Api = {
     reject: (id: string, hint: string): Promise<RoleModelResult> =>
       ipcRenderer.invoke('rolemodels:reject', id, hint),
     rebuild: (id: string): Promise<RoleModelResult> => ipcRenderer.invoke('rolemodels:rebuild', id),
+    retry: (id: string): Promise<RoleModelResult> => ipcRenderer.invoke('rolemodels:retry', id),
+    addSource: (id: string, url: string): Promise<RoleModelResult> =>
+      ipcRenderer.invoke('rolemodels:add-source', id, url),
     remove: (id: string): Promise<RoleModelResult> => ipcRenderer.invoke('rolemodels:remove', id),
     setFrameworkEnabled: (frameworkId: string, enabled: boolean): Promise<RoleModelResult> =>
       ipcRenderer.invoke('rolemodels:set-framework-enabled', frameworkId, enabled),
@@ -162,6 +165,10 @@ const api: Api = {
     setDefaultModel: (modelId: string): Promise<OnlineSettings> =>
       ipcRenderer.invoke('ai:set-default-model', modelId),
     catalog: (): Promise<OnlineCatalog> => ipcRenderer.invoke('ai:catalog'),
+    getLastModel: (): Promise<{ provider: string; modelId: string } | null> =>
+      ipcRenderer.invoke('ai:get-last-model'),
+    setLastModel: (provider: string, modelId: string): Promise<void> =>
+      ipcRenderer.invoke('ai:set-last-model', provider, modelId),
     acknowledgeNonZdr: (modelId: string): Promise<OnlineSettings> =>
       ipcRenderer.invoke('ai:acknowledge-non-zdr', modelId),
     refreshCatalog: () => ipcRenderer.invoke('ai:refresh-catalog'),

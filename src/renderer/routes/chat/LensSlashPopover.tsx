@@ -12,6 +12,8 @@ export interface FrameOption {
   description: string
   /** Set when the frame came from a role model rather than the app. */
   borrowedFrom: string | null
+  /** True for the "all of this person's frameworks" entry. */
+  wholePerson?: boolean
 }
 
 export function buildFrameOptions(borrowed: BorrowedFramework[]): FrameOption[] {
@@ -21,12 +23,38 @@ export function buildFrameOptions(borrowed: BorrowedFramework[]): FrameOption[] 
     description: LENS_DESCRIPTIONS[kind],
     borrowedFrom: null
   }))
-  const fromPeople: FrameOption[] = borrowed.map((f) => ({
-    selection: { kind: 'borrowed', frameworkId: f.id },
-    label: f.name,
-    description: f.summary,
-    borrowedFrom: f.personName
-  }))
+
+  // Each person leads with their whole toolkit, then the individual frames.
+  // Picking one frame is a sharp instrument; picking the person asks how they
+  // would approach the decision at all, which is usually what you want first.
+  const byPerson = new Map<string, BorrowedFramework[]>()
+  for (const f of borrowed) {
+    const list = byPerson.get(f.roleModelId) ?? []
+    list.push(f)
+    byPerson.set(f.roleModelId, list)
+  }
+
+  const fromPeople: FrameOption[] = []
+  for (const [roleModelId, frameworks] of byPerson) {
+    const person = frameworks[0].personName
+    fromPeople.push({
+      selection: { kind: 'person', roleModelId },
+      label: `How ${person} would approach this`,
+      description: `All ${frameworks.length} of their frameworks — they pick the ones that apply.`,
+      borrowedFrom: person,
+      wholePerson: true
+    })
+    for (const f of frameworks) {
+      fromPeople.push({
+        selection: { kind: 'borrowed', frameworkId: f.id },
+        label: f.name,
+        description: f.summary,
+        borrowedFrom: person,
+        wholePerson: false
+      })
+    }
+  }
+
   return [...builtin, ...fromPeople]
 }
 
@@ -140,12 +168,13 @@ function Row({
         onSelect(option)
       }}
       className={[
-        'flex w-full items-start gap-2.5 px-3.5 py-2 text-left',
+        'flex w-full items-start gap-2.5 py-2 pr-3.5 text-left',
+        option.borrowedFrom && !option.wholePerson ? 'pl-7' : 'pl-3.5',
         active ? 'bg-nav-active' : ''
       ].join(' ')}
     >
       {option.borrowedFrom ? (
-        <Avatar name={option.borrowedFrom} />
+        <Avatar name={option.borrowedFrom} size={option.wholePerson ? 22 : 20} />
       ) : (
         <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-border bg-bg text-text-muted">
           <Sparkles size={10} strokeWidth={2} />
@@ -153,8 +182,15 @@ function Row({
       )}
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5">
-          <span className="truncate text-[12.5px] font-medium text-text">{option.label}</span>
-          {option.borrowedFrom && (
+          <span
+            className={[
+              'truncate text-[12.5px] text-text',
+              option.wholePerson ? 'font-semibold' : 'font-medium'
+            ].join(' ')}
+          >
+            {option.label}
+          </span>
+          {option.borrowedFrom && !option.wholePerson && (
             <span className="shrink-0 text-[10.5px] text-text-muted">{option.borrowedFrom}</span>
           )}
         </span>

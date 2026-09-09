@@ -18,6 +18,7 @@ import type {
   RoleModelResult,
   RoleModelSettings
 } from '@shared/roleModels'
+import { DEFAULT_ROLE_MODEL_MODEL } from '@shared/roleModels'
 import type {
   MemoryActionResult,
   MemoryBackfillEstimate,
@@ -78,13 +79,15 @@ import {
   setOpenRouterKey
 } from './ai/credentials'
 import { loadOnlineSettings, revokeOnlineConsent, saveOnlineSettings } from './ai/settings'
-import { clearCatalog, getCachedCatalog, refreshCatalog } from './ai/catalog'
+import { clearCatalog, ensureCatalog, getCachedCatalog, refreshCatalog } from './ai/catalog'
 import { resetOnlineSession } from './ai/network'
 import {
   addRoleModel,
+  addSource,
   buildProfile,
   confirmCandidate,
   configureRoleModels,
+  identify,
   rejectCandidates
 } from './rolemodels/service'
 import * as roleModelStore from './rolemodels/store'
@@ -586,7 +589,49 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  ipcMain.handle('ai:catalog', async (): Promise<OnlineCatalog> => getCachedCatalog())
+  /**
+   * The provider and model chosen for chat.
+   *
+   * Without this the choice lived only in renderer state, so every launch reset
+   * to whichever local model happened to be installed first — picking an online
+   * model appeared to "not stick".
+   */
+  ipcMain.handle('ai:get-last-model', async (): Promise<{ provider: string; modelId: string } | null> => {
+    if (!session.db) return null
+    const row = session.db
+      .prepare("SELECT value FROM meta WHERE key = 'chat_last_model'")
+      .get() as { value: string } | undefined
+    if (!row) return null
+    try {
+      const parsed = JSON.parse(row.value) as { provider?: unknown; modelId?: unknown }
+      if (typeof parsed.provider !== 'string' || typeof parsed.modelId !== 'string') return null
+      return { provider: parsed.provider, modelId: parsed.modelId }
+    } catch {
+      return null
+    }
+  })
+
+  ipcMain.handle(
+    'ai:set-last-model',
+    async (_evt, provider: string, modelId: string): Promise<void> => {
+      if (!session.db) return
+      if (typeof provider !== 'string' || typeof modelId !== 'string' || !modelId) return
+      session.db
+        .prepare(
+          `INSERT INTO meta(key, value) VALUES('chat_last_model', ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+        )
+        .run(JSON.stringify({ provider, modelId }))
+    }
+  )
+
+  ipcMain.handle('ai:catalog', async (): Promise<OnlineCatalog> => {
+    const settings = await loadOnlineSettings()
+    if (!settings.enabled) return getCachedCatalog()
+    // Online AI is on, so an empty catalog is a gap to fill rather than a state
+    // to report. Fetched at most once; failures fall back to what we have.
+    return ensureCatalog(await readOpenRouterKey())
+  })
 
   ipcMain.handle(
     'ai:acknowledge-non-zdr',
@@ -802,14 +847,14 @@ export function registerIpcHandlers(): void {
     if (!session.db) {
       return {
         enabled: false,
-        modelId: online.defaultModel,
+        modelId: DEFAULT_ROLE_MODEL_MODEL,
         count: 0,
         blockedByOnlineDisabled: !online.enabled
       }
     }
     return {
       enabled: roleModelStore.isEnabled(session.db),
-      modelId: roleModelStore.getModel(session.db, online.defaultModel),
+      modelId: roleModelStore.getModel(session.db, DEFAULT_ROLE_MODEL_MODEL),
       count: roleModelStore.count(session.db),
       blockedByOnlineDisabled: !online.enabled
     }
@@ -877,6 +922,28 @@ export function registerIpcHandlers(): void {
     void buildProfile(id)
     return { ok: true }
   })
+
+  ipcMain.handle('rolemodels:retry', async (_evt, id: string): Promise<RoleModelResult> => {
+    if (!session.db) return { ok: false, error: 'Journal is locked.' }
+    if (typeof id !== 'string') return { ok: false, error: 'Invalid selection.' }
+    const model = roleModelStore.get(session.db, id)
+    if (!model) return { ok: false, error: 'That role model no longer exists.' }
+    // Resume where it stopped: a confirmed person needs its profile, an
+    // unconfirmed one needs identifying again.
+    if (model.name) void buildProfile(id)
+    else void identify(id, null)
+    return { ok: true }
+  })
+
+  ipcMain.handle(
+    'rolemodels:add-source',
+    async (_evt, id: string, url: string): Promise<RoleModelResult> => {
+      if (typeof id !== 'string' || typeof url !== 'string') {
+        return { ok: false, error: 'Invalid source.' }
+      }
+      return addSource(id, url)
+    }
+  )
 
   ipcMain.handle('rolemodels:remove', async (_evt, id: string): Promise<RoleModelResult> => {
     if (!session.db) return { ok: false, error: 'Journal is locked.' }

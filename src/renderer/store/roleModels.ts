@@ -14,6 +14,9 @@ interface RoleModelsState {
   confirm: (id: string, name: string) => Promise<string | null>
   reject: (id: string, hint: string) => Promise<string | null>
   rebuild: (id: string) => Promise<void>
+  /** Restarts a failed lookup from wherever it got to. */
+  retry: (id: string) => Promise<void>
+  addSource: (id: string, url: string) => Promise<string | null>
   remove: (id: string) => Promise<void>
   setFrameworkEnabled: (frameworkId: string, enabled: boolean) => Promise<void>
   reset: () => void
@@ -76,6 +79,17 @@ export const useRoleModelsStore = create<RoleModelsState>((set, get) => ({
   rebuild: async (id) => {
     await window.api.roleModels.rebuild(id)
     await get().refresh()
+  },
+
+  retry: async (id) => {
+    await window.api.roleModels.retry(id)
+    await get().refresh()
+  },
+
+  addSource: async (id, url) => {
+    const res = await window.api.roleModels.addSource(id, url)
+    await get().refresh()
+    return res.ok ? null : res.error
   },
 
   remove: async (id) => {

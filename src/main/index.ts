@@ -101,6 +101,19 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
+  // Renderer crashes were otherwise invisible: the main log stayed clean while
+  // the window showed a blank screen. Development builds only — a renderer
+  // console line can contain journal text, which must never reach a log a user
+  // might share.
+  if (!app.isPackaged) {
+    mainWindow.webContents.on('console-message', (_e, level, message, line, sourceId) => {
+      if (level >= 2) console.error(`[renderer] ${message}  (${sourceId}:${line})`)
+    })
+    mainWindow.webContents.on('render-process-gone', (_e, details) => {
+      console.error('[renderer] process gone:', details.reason)
+    })
+  }
+
   mainWindow.webContents.on('will-navigate', (event, url) => {
     const allowed =
       url.startsWith('file://') ||

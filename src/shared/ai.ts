@@ -7,6 +7,8 @@ import type { LensKind } from './ipc-contract'
 export type LensSelection =
   | { kind: 'builtin'; lens: LensKind }
   | { kind: 'borrowed'; frameworkId: string }
+  /** Every enabled framework a role model has, applied together. */
+  | { kind: 'person'; roleModelId: string }
 /**
  * Shared types for the AI provider layer.
  *
@@ -96,7 +98,17 @@ export interface OnlineModel {
 export interface OnlineCatalog {
   models: OnlineModel[]
   fetchedAt: number
+  /**
+   * Shape version of the cached entries. A cache written before a field existed
+   * silently yields `undefined` for it, which reads as a legitimate value and
+   * quietly disables whatever depends on it — that is how the route-count
+   * advice stopped firing. Bump this whenever OnlineModel gains a field.
+   */
+  version?: number
 }
+
+/** Current OnlineModel shape. Caches older than this are discarded. */
+export const CATALOG_SHAPE_VERSION = 2
 
 /** Token accounting returned by the provider, when it reports any. */
 export interface AiUsage {
@@ -149,7 +161,7 @@ export const AI_ERROR_HINTS: Record<AiErrorCode, string> = {
   'invalid-key': 'OpenRouter rejected the API key. Replace it in Settings → Online AI.',
   'insufficient-credit': 'Your OpenRouter account is out of credit.',
   'rate-limited':
-    'The model provider is rate-limiting these requests — this is not your API key or your account. Retrying automatically; if it keeps happening, pick a model served by more zero-data-retention routes.',
+    'The model provider is rate-limiting these requests — this is not your API key or your account. It was already retried several times. Wait a minute and try again, or pick a model served by more zero-data-retention routes.',
   'no-private-route':
     'No provider enforcing zero data retention is available for this model right now. We will not fall back to one that keeps your data. Try again, or pick a different model.',
   'context-too-large':

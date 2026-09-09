@@ -18,8 +18,8 @@ import type { LensSelection } from '@shared/ai'
 import { LENS_LABELS } from '@shared/ipc-contract'
 import { getDecision, listDecisions } from '../db/decisions'
 import { lensInstruction } from './lensPrompts'
-import { borrowedLensInstruction } from '../rolemodels/prompt'
-import { getFramework } from '../rolemodels/store'
+import { borrowedLensInstruction, borrowedPersonInstruction } from '../rolemodels/prompt'
+import { getFramework, personFrameworks } from '../rolemodels/store'
 import { formatDate, renderDecision } from './decisionSections'
 import { renderApprovedMemories } from '../memory/context'
 
@@ -139,6 +139,12 @@ export function buildSystemPrompt(opts: BuildPromptOptions): BuiltPrompt {
     if (framework) {
       sections.push(borrowedLensInstruction(framework.personName, framework.instruction))
       lensLabel = `${framework.name} (${framework.personName})`
+    }
+  } else if (opts.lens?.kind === 'person') {
+    const person = personFrameworks(db, opts.lens.roleModelId)
+    if (person) {
+      sections.push(borrowedPersonInstruction(person.personName, person.frameworks))
+      lensLabel = `${person.personName} — all ${person.frameworks.length} frameworks`
     }
   }
 

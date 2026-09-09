@@ -150,3 +150,51 @@ describe('avatars use initials, never a downloaded image', () => {
     expect(avatarHue('Paul Graham')).not.toBe(avatarHue('Peter Thiel'))
   })
 })
+
+/**
+ * People worth studying are usually polarising, so a claim grounded in their
+ * own words is worth more than one grounded in someone's opinion of them — and
+ * overstating which is which is the failure that matters.
+ */
+describe('provenance', () => {
+  const c = (patch: Record<string, unknown> = {}) => ({
+    section: 'trait',
+    text: 'Describes himself as more interested in problems than in solutions.',
+    sourceUrl: 'https://paulgraham.com/worked.html',
+    sourceTitle: null,
+    sourceType: 'primary',
+    ...patch
+  })
+
+  it("keeps a claim marked as the person's own words", () => {
+    expect(validateProfile({ claims: [c()] }).claims[0].sourceType).toBe('primary')
+  })
+
+  it('keeps a third-party claim as secondary', () => {
+    expect(validateProfile({ claims: [c({ sourceType: 'secondary' })] }).claims[0].sourceType).toBe(
+      'secondary'
+    )
+  })
+
+  it('never lets a missing or bogus value pass as primary', () => {
+    // Crediting someone else's opinion as the subject's own words is the one
+    // direction this must not fail in.
+    for (const bad of [undefined, null, '', 'PRIMARY ', 'firsthand', 1, {}]) {
+      expect(validateProfile({ claims: [c({ sourceType: bad })] }).claims[0].sourceType).toBe(
+        'secondary'
+      )
+    }
+  })
+
+  it('applies the same rule to frameworks', () => {
+    const fw = {
+      name: 'Do things that don’t scale',
+      summary: 'Start manual.',
+      instruction: 'Ask what the unscalable version looks like.',
+      sourceUrl: 'https://paulgraham.com/ds.html',
+      sourceTitle: null
+    }
+    expect(validateProfile({ frameworks: [{ ...fw, sourceType: 'primary' }] }).frameworks[0].sourceType).toBe('primary')
+    expect(validateProfile({ frameworks: [fw] }).frameworks[0].sourceType).toBe('secondary')
+  })
+})

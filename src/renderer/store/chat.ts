@@ -94,6 +94,13 @@ interface ChatState {
   /** Frameworks borrowed from role models, offered beside the built-in lenses. */
   borrowedFrameworks: BorrowedFramework[]
   /**
+   * Whether the header model dropdown is open. Lifted out of the component so
+   * an error can offer "pick another model" without navigating away from the
+   * conversation — sending someone to a full-screen picker mid-thread strands
+   * them, which is exactly what it did.
+   */
+  switcherOpen: boolean
+  /**
    * Analytical frame for this conversation. Applied as a system instruction
    * rather than pasted into the user's message, so the payload preview and the
    * online consent gate keep telling the truth about what is sent.
@@ -105,6 +112,9 @@ interface ChatState {
   refreshOnline: () => Promise<void>
   openModelSetup: () => void
   setSetupView: (view: SetupView) => void
+  setSwitcherOpen: (open: boolean) => void
+  /** Leaves the picker without changing anything. */
+  returnToChat: () => void
   selectModel: (provider: AiProvider, modelId: string) => void
   setAttachments: (ids: string[]) => Promise<void>
   setIncludeMemories: (include: boolean) => void
@@ -112,6 +122,8 @@ interface ChatState {
   /** Starts a fresh thread running one frame over one decision. */
   startLens: (lens: LensSelection, decisionId: string) => void
   refreshMemoryAvailability: () => Promise<void>
+  /** Reads back the provider and model chat was last using. */
+  restoreLastModel: () => Promise<void>
   refreshBorrowedFrameworks: () => Promise<void>
   confirmOnlineConsent: () => void
   startPull: (modelId: string) => Promise<void>
@@ -279,6 +291,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   onlineCatalog: [],
   setupView: 'chooser',
   setupPinned: false,
+  switcherOpen: false,
   messages: [],
   streaming: null,
   pulls: {},
@@ -303,6 +316,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
     // Arriving at Chat is never "browsing the picker" — re-evaluate freely.
     set({ setupPinned: false })
+    // Restore the choice before refresh() decides anything, so a saved online
+    // model is not overwritten by whichever local model is installed first.
+    await get().restoreLastModel()
     await get().refreshMemoryAvailability()
     await get().refreshBorrowedFrameworks()
     // Sequential, not parallel: refresh() decides which provider to land on and
@@ -310,6 +326,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
     // together raced, and refresh() often read `online` as null.
     await get().refreshOnline()
     await get().refresh()
+  },
+
+  restoreLastModel: async () => {
+    try {
+      const last = await window.api.ai.getLastModel()
+      if (!last) return
+      const provider = last.provider === 'openrouter' ? 'openrouter' : 'ollama'
+      // Only seed; never override a choice made during this session.
+      if (get().activeModel === null) set({ provider, activeModel: last.modelId })
+    } catch {
+      // no saved choice
+    }
   },
 
   refreshMemoryAvailability: async () => {
@@ -380,6 +408,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (provider === 'ollama') {
       const stillValid = activeModel && installed.some((m) => m.id === activeModel)
       if (!stillValid) nextModel = installed.length > 0 ? installed[0].id : null
+    } else if (provider === 'openrouter') {
+      // An online model is valid whether or not the catalog has loaded yet;
+      // clearing it here is what made a chosen model appear to revert.
+      const onlineUsable = online?.enabled === true && online.hasKey
+      if (!onlineUsable) nextModel = installed.length > 0 ? installed[0].id : null
+      if (!onlineUsable) nextProvider = 'ollama'
     }
     if (nextModel === null && online?.enabled && online.hasKey) {
       nextProvider = 'openrouter'
@@ -396,7 +430,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   setSetupView: (view) => set({ setupView: view }),
 
+  setSwitcherOpen: (open) => set({ switcherOpen: open }),
+
+  returnToChat: () => set({ stage: 'chat', setupPinned: false, setupView: 'chooser' }),
+
   selectModel: (provider, modelId) => {
+    void window.api.ai.setLastModel(provider, modelId).catch(() => {})
     set({
       provider,
       activeModel: modelId,
@@ -605,6 +644,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       onlineCatalog: [],
       setupView: 'chooser',
       setupPinned: false,
+      switcherOpen: false,
       messages: [],
       streaming: null,
       pulls: {},

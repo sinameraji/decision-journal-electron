@@ -78,9 +78,11 @@ export default function ChatView() {
   const lensOpener =
     lens?.kind === 'builtin'
       ? LENS_OPENERS[lens.lens]
-      : activeFrame?.borrowedFrom
-        ? borrowedOpener(activeFrame.borrowedFrom, activeFrame.label)
-        : ''
+      : activeFrame?.wholePerson && activeFrame.borrowedFrom
+        ? `Analyse this decision the way ${activeFrame.borrowedFrom} would.`
+        : activeFrame?.borrowedFrom
+          ? borrowedOpener(activeFrame.borrowedFrom, activeFrame.label)
+          : ''
   const atResults = atQuery === null ? [] : filterDecisions(allDecisions, atQuery)
   const popoverOpen = slashQuery !== null || atQuery !== null
 
@@ -127,7 +129,7 @@ export default function ChatView() {
   const stopStreaming = useChatStore((s) => s.stopStreaming)
   const clearConversation = useChatStore((s) => s.clearConversation)
   const retryLast = useChatStore((s) => s.retryLast)
-  const openModelSetup = useChatStore((s) => s.openModelSetup)
+  const setSwitcherOpen = useChatStore((s) => s.setSwitcherOpen)
   const setAttachments = useChatStore((s) => s.setAttachments)
   const confirmOnlineConsent = useChatStore((s) => s.confirmOnlineConsent)
 
@@ -234,79 +236,64 @@ export default function ChatView() {
 
   return (
     <div className="mx-auto flex h-full max-w-[780px] flex-col">
-      <div className="flex items-center justify-between border-b border-border pb-3">
-        <div className="min-w-0">
-          <ModelSwitcher label={displayLabel} />
-          <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-text-muted">
-            {online ? (
-              <Globe size={10} strokeWidth={2} className="text-amber-600 dark:text-amber-400" />
-            ) : (
-              <Laptop size={10} strokeWidth={2} />
-            )}
-            <span className="truncate">{subtitle}</span>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
+      {/* One row, not two. The header was eating a third of the window before a
+          single message was visible: a model line, a subtitle line, and a
+          separate strip of scope controls. Everything here is one line now,
+          with the provider shown as a dot beside the model rather than a pill
+          of its own. */}
+      <div className="flex items-center gap-2 border-b border-border pb-2">
+        <span
+          className={[
+            'h-1.5 w-1.5 shrink-0 rounded-full',
+            online ? 'bg-amber-500' : 'bg-emerald-500'
+          ].join(' ')}
+          title={subtitle}
+        />
+        <ModelSwitcher label={displayLabel} />
+
+        <div className="ml-auto flex items-center gap-1.5">
+          <HeaderButton
+            icon={<Paperclip size={12} strokeWidth={2} />}
+            label={attachments.length === 0 ? 'Attach' : String(attachments.length)}
+            title={
+              attachments.length === 0
+                ? 'Attach decisions to this chat'
+                : `${attachments.length} decision${attachments.length === 1 ? '' : 's'} attached`
+            }
+            onClick={() => setShowAttach(true)}
+            active={attachments.length > 0}
+          />
+          {memoryAvailable && (
+            <HeaderButton
+              icon={<Brain size={12} strokeWidth={2} />}
+              label={includeMemories ? 'Memories' : 'Memories'}
+              title={
+                includeMemories
+                  ? 'Your approved memories are sent with this conversation'
+                  : 'This conversation is not sending your approved memories'
+              }
+              onClick={() => setIncludeMemories(!includeMemories)}
+              active={includeMemories}
+              muted={!includeMemories}
+            />
+          )}
+          <HeaderButton
+            icon={<Eye size={12} strokeWidth={2} />}
+            label="What gets sent"
+            title="See exactly what this message will send"
+            onClick={() => setReview('preview')}
+          />
+          <span className="mx-0.5 h-4 w-px bg-border" />
           <PastChatsDropdown />
           {messages.length > 0 && (
-            <button
-              type="button"
+            <HeaderButton
+              icon={<Eraser size={12} strokeWidth={2} />}
+              label=""
+              title="Start a new chat"
               onClick={clearConversation}
-              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-bg px-2.5 py-1.5 text-[11.5px] text-text-muted hover:text-text"
-            >
-              <Eraser size={12} strokeWidth={2} />
-              New chat
-            </button>
+            />
           )}
         </div>
-      </div>
-
-      <div className="flex items-center gap-2 border-b border-border py-2">
-        <button
-          type="button"
-          onClick={() => setShowAttach(true)}
-          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-bg px-2.5 py-1.5 text-[11.5px] text-text-muted hover:text-text"
-        >
-          <Paperclip size={12} strokeWidth={2} />
-          {attachments.length === 0
-            ? 'Attach decisions'
-            : `${attachments.length} decision${attachments.length === 1 ? '' : 's'} attached`}
-        </button>
-        {memoryAvailable && (
-          <button
-            type="button"
-            onClick={() => setIncludeMemories(!includeMemories)}
-            aria-pressed={includeMemories}
-            className={[
-              'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[11.5px]',
-              includeMemories
-                ? 'border-[rgb(var(--accent))] bg-[rgb(var(--accent))] text-accent-text dark:border-border dark:bg-bg-elevated dark:text-text'
-                : 'border-border bg-bg text-text-muted hover:text-text'
-            ].join(' ')}
-            title={
-              includeMemories
-                ? 'Your approved memories are sent with this conversation'
-                : 'This conversation is not sending your approved memories'
-            }
-          >
-            <Brain size={12} strokeWidth={2} />
-            {includeMemories ? 'Using memories' : 'Memories off for this chat'}
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={() => setReview('preview')}
-          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-bg px-2.5 py-1.5 text-[11.5px] text-text-muted hover:text-text"
-        >
-          <Eye size={12} strokeWidth={2} />
-          What gets sent
-        </button>
-        {online && (
-          <span className="ml-auto inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/5 px-2 py-1 text-[10.5px] text-amber-700 dark:text-amber-400">
-            <Globe size={10} strokeWidth={2} />
-            Leaves your Mac
-          </span>
-        )}
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto py-4">
@@ -314,6 +301,8 @@ export default function ChatView() {
           <EmptyState
             online={online}
             lensReady={lensRunReady ? lensLabel : null}
+            hasAttachments={attachments.length > 0}
+            hasRoleModels={borrowedFrameworks.length > 0}
             onAttach={() => setShowAttach(true)}
             onRun={handleSend}
           />
@@ -334,14 +323,14 @@ export default function ChatView() {
                 message={streaming.error}
                 code={streaming.errorCode}
                 onRetry={() => void retryLast()}
-                onPickModel={openModelSetup}
+                onPickModel={() => setSwitcherOpen(true)}
               />
             )}
           </div>
         )}
       </div>
 
-      <div className="border-t border-border pb-4 pt-3">
+      <div className="border-t border-border pb-3 pt-2">
         {lens && (
           <div className="mb-2 flex items-center gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-md border border-[rgb(var(--accent))] bg-[rgb(var(--accent))] px-2.5 py-1 text-[11.5px] font-medium text-accent-text dark:border-border dark:bg-bg-elevated dark:text-text">
@@ -425,10 +414,10 @@ export default function ChatView() {
             </button>
           )}
         </div>
-        <div className="mt-1.5 text-center text-[10.5px] text-text-muted/80">
+        <div className="mt-1 text-center text-[10px] text-text-muted/70">
           {online
-            ? 'This chat and the decisions you attach are sent to OpenRouter and the model provider. Nothing else from your journal is.'
-            : 'Messages and replies stay on this Mac. The model sees the decisions you attach, plus titles of your recent ones.'}
+            ? 'Sent to OpenRouter and the model provider — this chat and what you attach, nothing else.'
+            : 'Stays on this Mac.'}
         </div>
       </div>
 
@@ -463,19 +452,39 @@ export default function ChatView() {
 function EmptyState({
   online,
   lensReady,
+  hasAttachments,
+  hasRoleModels,
   onAttach,
   onRun
 }: {
   online: boolean
   lensReady: string | null
+  hasAttachments: boolean
+  hasRoleModels: boolean
   onAttach: () => void
   onRun: () => void
 }) {
-  const suggestions = [
-    'What patterns do you see in the decisions I attached?',
-    'Help me think through my most recent decision.',
-    'What questions should I be asking myself right now?'
-  ]
+  // These used to be fixed, and the first one asked about "the decisions I
+  // attached" on a screen whose whole point is that nothing is attached yet.
+  // They now match the state the user is actually in, and lead with the thing
+  // this app is for: pressure-testing reasoning, not summarising it.
+  const suggestions = hasAttachments
+    ? [
+        'What is the weakest assumption in this decision?',
+        'What would have to be true for this to turn out badly?',
+        'What did I fail to consider here?'
+      ]
+    : online
+      ? [
+          'What should I be asking myself before I commit to something big?',
+          'How do I tell a good decision from a good outcome?',
+          'What makes a forecast worth writing down?'
+        ]
+      : [
+          'What patterns show up across my recent decisions?',
+          'What should I be asking myself before I commit to something big?',
+          'How do I tell a good decision from a good outcome?'
+        ]
   const sendMessage = useChatStore((s) => s.sendMessage)
   const onlineConsentConfirmed = useChatStore((s) => s.onlineConsentConfirmed)
   const canQuickSend = !online || onlineConsentConfirmed
@@ -508,14 +517,20 @@ function EmptyState({
           ? 'Attach the decisions you want this model to see. Nothing else from your journal is sent.'
           : 'Attach a decision for the full detail, or just ask — the local model can see your recent titles.'}
       </p>
-      <button
-        type="button"
-        onClick={onAttach}
-        className="mt-4 inline-flex items-center gap-1.5 rounded-md border border-border bg-bg-elevated px-3 py-1.5 text-[12px] text-text hover:bg-nav-active"
-      >
-        <Paperclip size={12} strokeWidth={2} />
-        Attach decisions
-      </button>
+      <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+        <button
+          type="button"
+          onClick={onAttach}
+          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-bg-elevated px-3 py-1.5 text-[12px] text-text hover:bg-nav-active"
+        >
+          <Paperclip size={12} strokeWidth={2} />
+          Attach decisions
+        </button>
+        <span className="text-[11.5px] text-text-muted">
+          or type <span className="font-mono text-text">/</span> for a frame
+          {hasRoleModels ? ', including your role models' : ''}
+        </span>
+      </div>
       {canQuickSend && (
         <div className="mt-5 flex w-full max-w-[520px] flex-col gap-2">
           {suggestions.map((s) => (
@@ -621,9 +636,46 @@ function ErrorPanel({
           onClick={onPickModel}
           className="rounded-md border border-border bg-bg px-2.5 py-1.5 text-[11.5px] text-text hover:bg-nav-active"
         >
-          Pick another model
+          Switch model
         </button>
       </div>
     </div>
+  )
+}
+
+/** Compact header control: icon always, label only when it earns the width. */
+function HeaderButton({
+  icon,
+  label,
+  title,
+  onClick,
+  active,
+  muted
+}: {
+  icon: React.ReactNode
+  label: string
+  title: string
+  onClick: () => void
+  active?: boolean
+  muted?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      aria-pressed={active}
+      className={[
+        'inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px]',
+        active
+          ? 'border-[rgb(var(--accent))] bg-[rgb(var(--accent))] text-accent-text dark:border-border dark:bg-bg-elevated dark:text-text'
+          : 'border-border bg-bg text-text-muted hover:text-text',
+        muted ? 'opacity-70' : ''
+      ].join(' ')}
+    >
+      {icon}
+      {label && <span className="hidden sm:inline">{label}</span>}
+    </button>
   )
 }
