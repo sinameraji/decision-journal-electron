@@ -1,5 +1,5 @@
 /**
- * The four analytical frames.
+ * The built-in analytical frames.
  *
  * These are appended to the system prompt, not pasted into the user's message.
  * The original version inlined a rendered copy of the decision into the first
@@ -47,7 +47,27 @@ I'm modeling this as a solo choice, but rarely is it one. Walk through:
 3. Which counterparty's incentives are most misaligned with mine, and how would that misalignment show up in the next 3–6 months?
 4. One move I could make right now that accounts for the misalignment I am currently ignoring.
 
-This is the game-theoretic lens. Be rigorous but plain-spoken. Use markdown.`
+This is the game-theoretic lens. Be rigorous but plain-spoken. Use markdown.`,
+
+  'portfolio-theory': `Analyze this decision through the **Modern Portfolio Theory** lens.
+
+Treat my life and existing commitments as a portfolio, and this decision as one new position in it. Address:
+1. How correlated is this bet with everything else I already hold — my job, my other commitments, my identity? Quote the part of my write-up where that correlation shows (or where I ignored it).
+2. Does this concentrate my existing exposure or genuinely diversify it?
+3. Does the expected return I described actually justify the variance this adds, or am I underpricing the risk?
+4. Is this the right position size given my total exposure — and which of the risks I listed am I compensated for versus just carrying for free?
+
+Be precise about correlation and sizing, not just upside. Use markdown headings and end with a pointed question about whether I'd still take this position at half the size.`,
+
+  'market-theory': `Analyze this decision through the **Market Theory** lens.
+
+Treat this as a trade against other participants, not a decision made in a vacuum. Address:
+1. Where is my edge, and why does it exist? Quote the part of my write-up that actually supports it — or shows I don't have one.
+2. Is this a consensus move or a contrarian one, and what does that tell me about what's already priced in?
+3. Who is on the other side of this trade, and why would they willingly take it?
+4. What would have to be true for this to be efficiently priced — i.e. for me to have no edge at all?
+
+Don't let me confuse conviction with edge. Use markdown and end with one question about whether I'm right on timing or right on thesis, because those are not the same thing.`
 }
 
 /** The instruction for a lens, appended to the coach's system prompt. */
