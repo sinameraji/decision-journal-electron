@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.1](https://github.com/sinameraji/decision-journal-electron/compare/v0.10.0...v0.10.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* say whether an update exists, not how the lookup failed ([1f53dc8](https://github.com/sinameraji/decision-journal-electron/commit/1f53dc8696371e4573749ad0e4389372750eba72))
+* say whether an update exists, not how the lookup failed ([9bab706](https://github.com/sinameraji/decision-journal-electron/commit/9bab70645395d885a4c956f278616708fe313f61))
+
 ## [0.10.0](https://github.com/sinameraji/decision-journal-electron/compare/v0.9.0...v0.10.0) (2026-09-09)
 
 
