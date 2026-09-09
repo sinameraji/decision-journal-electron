@@ -19,7 +19,7 @@ beforeEach(() => {
 })
 
 describe('lens vocabulary', () => {
-  it('accepts only the four known lenses', () => {
+  it('accepts only the known lenses', () => {
     for (const k of LENS_KINDS) expect(isLensKind(k)).toBe(true)
     expect(isLensKind('hedge-fund')).toBe(false)
     expect(isLensKind('')).toBe(false)
@@ -58,6 +58,26 @@ describe('a lens reaches the prompt as an instruction, not as pasted text', () =
       lens: { kind: 'builtin', lens: 'pre-mortem' }
     })
     expect(built.systemPrompt).toMatch(/Pre-mortem/i)
+  })
+
+  it('appends the portfolio-theory lens when chosen', () => {
+    const built = buildSystemPrompt({
+      db,
+      provider: 'openrouter',
+      attachedDecisionIds: [],
+      lens: { kind: 'builtin', lens: 'portfolio-theory' }
+    })
+    expect(built.systemPrompt).toMatch(/Modern Portfolio Theory/i)
+  })
+
+  it('appends the market-theory lens when chosen', () => {
+    const built = buildSystemPrompt({
+      db,
+      provider: 'openrouter',
+      attachedDecisionIds: [],
+      lens: { kind: 'builtin', lens: 'market-theory' }
+    })
+    expect(built.systemPrompt).toMatch(/Market Theory/i)
   })
 
   it('still refuses to send an unattached decision', () => {

@@ -236,7 +236,9 @@ export const LENS_KINDS = [
   'opportunity-cost',
   'pre-mortem',
   'regret-minimization',
-  'counterparty-incentives'
+  'counterparty-incentives',
+  'portfolio-theory',
+  'market-theory'
 ] as const
 
 export type LensKind = (typeof LENS_KINDS)[number]
@@ -249,7 +251,9 @@ export const LENS_LABELS: Record<LensKind, string> = {
   'opportunity-cost': 'Opportunity Cost',
   'pre-mortem': 'Pre-mortem',
   'regret-minimization': 'Regret Minimization',
-  'counterparty-incentives': 'Counterparty Incentives'
+  'counterparty-incentives': 'Counterparty Incentives',
+  'portfolio-theory': 'Modern Portfolio Theory',
+  'market-theory': 'Market Theory'
 }
 
 export const LENS_DESCRIPTIONS: Record<LensKind, string> = {
@@ -257,7 +261,9 @@ export const LENS_DESCRIPTIONS: Record<LensKind, string> = {
   'pre-mortem': 'Assume it failed in 12 months — what went wrong?',
   'regret-minimization': 'Project ten years out — which option would you regret more?',
   'counterparty-incentives':
-    'Who else is in this decision, and how do their incentives change the payoff?'
+    'Who else is in this decision, and how do their incentives change the payoff?',
+  'portfolio-theory': 'Treat this as one position in your portfolio, not a decision in isolation.',
+  'market-theory': "Treat this as a trade — where's your edge, and who's on the other side?"
 }
 
 /**
@@ -270,7 +276,9 @@ export const LENS_OPENERS: Record<LensKind, string> = {
   'opportunity-cost': 'Run the opportunity-cost lens over this decision.',
   'pre-mortem': 'Run a pre-mortem on this decision.',
   'regret-minimization': 'Run a regret-minimization analysis on this decision.',
-  'counterparty-incentives': 'Analyse the counterparty incentives in this decision.'
+  'counterparty-incentives': 'Analyse the counterparty incentives in this decision.',
+  'portfolio-theory': 'Run a Modern Portfolio Theory analysis on this decision.',
+  'market-theory': 'Analyse this decision through a market-theory lens.'
 }
 
 export interface WhisperModelInfo {
