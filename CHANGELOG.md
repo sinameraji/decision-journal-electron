@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.11.0](https://github.com/sinameraji/decision-journal-electron/compare/v0.10.1...v0.11.0) (2026-09-09)
+
+
+### Features
+
+* autosave decision drafts ([8466053](https://github.com/sinameraji/decision-journal-electron/commit/8466053ddd14e470f2e549a18a8a622a1f524317))
+* autosave decision drafts ([2da4f4a](https://github.com/sinameraji/decision-journal-electron/commit/2da4f4a545e4d7df3c3a81c0508a08f452c39704))
+
 ## [0.10.1](https://github.com/sinameraji/decision-journal-electron/compare/v0.10.0...v0.10.1) (2026-09-09)
 
 
