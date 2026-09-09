@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.0](https://github.com/sinameraji/decision-journal-electron/compare/v0.8.0...v0.9.0) (2026-09-09)
+
+
+### Features
+
+* add Modern Portfolio Theory and Market Theory lenses ([63b08a8](https://github.com/sinameraji/decision-journal-electron/commit/63b08a8dd37064504fca845e602ccc9442443271))
+* add Modern Portfolio Theory and Market Theory lenses ([b826f82](https://github.com/sinameraji/decision-journal-electron/commit/b826f8295d8d105624d68ac207e9620ff8db3aeb))
+
 ## [0.8.0](https://github.com/sinameraji/decision-journal-electron/compare/v0.7.1...v0.8.0) (2026-09-09)
 
 
