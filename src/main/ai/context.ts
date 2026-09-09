@@ -14,9 +14,12 @@
 import type Database from 'better-sqlite3-multiple-ciphers'
 import type { AiProvider } from '@shared/ai'
 import type { Decision } from '@shared/ipc-contract'
-import type { LensKind } from '@shared/ipc-contract'
+import type { LensSelection } from '@shared/ai'
+import { LENS_LABELS } from '@shared/ipc-contract'
 import { getDecision, listDecisions } from '../db/decisions'
 import { lensInstruction } from './lensPrompts'
+import { borrowedLensInstruction } from '../rolemodels/prompt'
+import { getFramework } from '../rolemodels/store'
 import { formatDate, renderDecision } from './decisionSections'
 import { renderApprovedMemories } from '../memory/context'
 
@@ -60,7 +63,7 @@ export interface BuildPromptOptions {
   /** Per-conversation opt-in to sending approved memories. Defaults to off. */
   includeMemories?: boolean
   /** Analytical frame to apply, if the user picked one. */
-  lens?: LensKind | null
+  lens?: LensSelection | null
 }
 
 export interface BuiltPrompt {
@@ -70,6 +73,8 @@ export interface BuiltPrompt {
   missingIds: string[]
   /** True when approved memories were actually added to the prompt. */
   memoriesIncluded: boolean
+  /** Display name of the frame that was applied, if any. */
+  lensLabel: string | null
 }
 
 export function buildSystemPrompt(opts: BuildPromptOptions): BuiltPrompt {
@@ -83,7 +88,8 @@ export function buildSystemPrompt(opts: BuildPromptOptions): BuiltPrompt {
       systemPrompt: sections.join('\n\n'),
       attachedTitles: [],
       missingIds: [],
-      memoriesIncluded: false
+      memoriesIncluded: false,
+      lensLabel: null
     }
   }
 
@@ -123,8 +129,18 @@ export function buildSystemPrompt(opts: BuildPromptOptions): BuiltPrompt {
     }
   }
 
-  // The lens goes last so it reads as the task, after the material it applies to.
-  if (opts.lens) sections.push(lensInstruction(opts.lens))
+  // The frame goes last so it reads as the task, after the material it applies to.
+  let lensLabel: string | null = null
+  if (opts.lens?.kind === 'builtin') {
+    sections.push(lensInstruction(opts.lens.lens))
+    lensLabel = LENS_LABELS[opts.lens.lens]
+  } else if (opts.lens?.kind === 'borrowed') {
+    const framework = getFramework(db, opts.lens.frameworkId)
+    if (framework) {
+      sections.push(borrowedLensInstruction(framework.personName, framework.instruction))
+      lensLabel = `${framework.name} (${framework.personName})`
+    }
+  }
 
   let memoriesIncluded = false
   if (opts.includeMemories) {
@@ -139,7 +155,8 @@ export function buildSystemPrompt(opts: BuildPromptOptions): BuiltPrompt {
     systemPrompt: sections.join('\n\n'),
     attachedTitles: attached.map((d) => d.title),
     missingIds,
-    memoriesIncluded
+    memoriesIncluded,
+    lensLabel
   }
 }
 

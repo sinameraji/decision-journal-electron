@@ -13,6 +13,12 @@ import type {
   SendChatParams
 } from '@shared/ai'
 import type {
+  BorrowedFramework,
+  RoleModel,
+  RoleModelResult,
+  RoleModelSettings
+} from '@shared/roleModels'
+import type {
   MemoryActionResult,
   MemoryBackfillEstimate,
   MemoryItem,
@@ -74,6 +80,14 @@ import {
 import { loadOnlineSettings, revokeOnlineConsent, saveOnlineSettings } from './ai/settings'
 import { clearCatalog, getCachedCatalog, refreshCatalog } from './ai/catalog'
 import { resetOnlineSession } from './ai/network'
+import {
+  addRoleModel,
+  buildProfile,
+  confirmCandidate,
+  configureRoleModels,
+  rejectCandidates
+} from './rolemodels/service'
+import * as roleModelStore from './rolemodels/store'
 import { OpenRouterError } from './ai/openrouterClient'
 import {
   configureMemoryQueue,
@@ -183,6 +197,12 @@ configureAiService({
 })
 
 configureMemoryQueue({
+  db: () => session.db,
+  vaultGeneration: () => vaultGeneration,
+  defaultModel: async () => (await loadOnlineSettings()).defaultModel
+})
+
+configureRoleModels({
   db: () => session.db,
   vaultGeneration: () => vaultGeneration,
   defaultModel: async () => (await loadOnlineSettings()).defaultModel
@@ -774,6 +794,136 @@ export function registerIpcHandlers(): void {
       return { ok: true }
     }
   )
+
+  // ---------------- Optional role models ----------------
+
+  async function roleModelSettings(): Promise<RoleModelSettings> {
+    const online = await loadOnlineSettings()
+    if (!session.db) {
+      return {
+        enabled: false,
+        modelId: online.defaultModel,
+        count: 0,
+        blockedByOnlineDisabled: !online.enabled
+      }
+    }
+    return {
+      enabled: roleModelStore.isEnabled(session.db),
+      modelId: roleModelStore.getModel(session.db, online.defaultModel),
+      count: roleModelStore.count(session.db),
+      blockedByOnlineDisabled: !online.enabled
+    }
+  }
+
+  ipcMain.handle(
+    'rolemodels:get-settings',
+    async (): Promise<RoleModelSettings> => roleModelSettings()
+  )
+
+  ipcMain.handle(
+    'rolemodels:set-enabled',
+    async (_evt, enabled: boolean): Promise<RoleModelSettings> => {
+      if (session.db) {
+        const online = await loadOnlineSettings()
+        // Role models need the online provider; they cannot be switched on alone.
+        if (enabled === true && online.enabled) roleModelStore.setEnabled(session.db, true)
+        if (enabled !== true) roleModelStore.setEnabled(session.db, false)
+      }
+      return roleModelSettings()
+    }
+  )
+
+  ipcMain.handle(
+    'rolemodels:set-model',
+    async (_evt, modelId: string): Promise<RoleModelSettings> => {
+      if (session.db && typeof modelId === 'string' && modelId.trim()) {
+        roleModelStore.setModel(session.db, modelId.trim())
+      }
+      return roleModelSettings()
+    }
+  )
+
+  ipcMain.handle('rolemodels:list', async (): Promise<RoleModel[]> => {
+    if (!session.db) return []
+    return roleModelStore.list(session.db)
+  })
+
+  ipcMain.handle('rolemodels:add', async (_evt, query: string): Promise<RoleModelResult> => {
+    if (typeof query !== 'string') return { ok: false, error: 'Invalid name.' }
+    return addRoleModel(query)
+  })
+
+  ipcMain.handle(
+    'rolemodels:confirm',
+    async (_evt, id: string, name: string): Promise<RoleModelResult> => {
+      if (typeof id !== 'string' || typeof name !== 'string') {
+        return { ok: false, error: 'Invalid selection.' }
+      }
+      return confirmCandidate(id, name)
+    }
+  )
+
+  ipcMain.handle(
+    'rolemodels:reject',
+    async (_evt, id: string, hint: string): Promise<RoleModelResult> => {
+      if (typeof id !== 'string') return { ok: false, error: 'Invalid selection.' }
+      return rejectCandidates(id, typeof hint === 'string' ? hint : '')
+    }
+  )
+
+  ipcMain.handle('rolemodels:rebuild', async (_evt, id: string): Promise<RoleModelResult> => {
+    if (!session.db) return { ok: false, error: 'Journal is locked.' }
+    if (typeof id !== 'string') return { ok: false, error: 'Invalid selection.' }
+    void buildProfile(id)
+    return { ok: true }
+  })
+
+  ipcMain.handle('rolemodels:remove', async (_evt, id: string): Promise<RoleModelResult> => {
+    if (!session.db) return { ok: false, error: 'Journal is locked.' }
+    if (typeof id !== 'string') return { ok: false, error: 'Invalid selection.' }
+    roleModelStore.remove(session.db, id)
+    return { ok: true }
+  })
+
+  ipcMain.handle(
+    'rolemodels:set-framework-enabled',
+    async (_evt, frameworkId: string, enabled: boolean): Promise<RoleModelResult> => {
+      if (!session.db) return { ok: false, error: 'Journal is locked.' }
+      if (typeof frameworkId !== 'string') return { ok: false, error: 'Invalid framework.' }
+      roleModelStore.setFrameworkEnabled(session.db, frameworkId, enabled === true)
+      return { ok: true }
+    }
+  )
+
+  ipcMain.handle(
+    'rolemodels:open-source',
+    async (_evt, url: string): Promise<{ ok: boolean; error?: string }> => {
+      if (!session.db) return { ok: false, error: 'Journal is locked.' }
+      if (typeof url !== 'string') return { ok: false, error: 'Invalid link.' }
+      let parsed: URL
+      try {
+        parsed = new URL(url)
+      } catch {
+        return { ok: false, error: 'Invalid link.' }
+      }
+      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+        return { ok: false, error: 'Only web links can be opened.' }
+      }
+      // Citation URLs come from a model, so they are opened only when they are
+      // already recorded against a stored claim, framework or candidate.
+      if (!roleModelStore.isStoredSource(session.db, url)) {
+        console.warn('[rolemodels:open-source] refused an unrecorded link')
+        return { ok: false, error: 'That link is not one of the stored sources.' }
+      }
+      await shell.openExternal(url)
+      return { ok: true }
+    }
+  )
+
+  ipcMain.handle('rolemodels:frameworks', async (): Promise<BorrowedFramework[]> => {
+    if (!session.db) return []
+    return roleModelStore.enabledFrameworks(session.db)
+  })
 
   ipcMain.handle('memory:forget-all', async (): Promise<MemoryActionResult> => {
     if (!session.db) return { ok: false, error: 'Journal is locked.' }

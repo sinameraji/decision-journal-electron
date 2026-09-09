@@ -201,6 +201,13 @@ export interface ChatRequest {
    * explicitly accepted this model without one.
    */
   enforceZdr: boolean
+  /**
+   * Enable OpenRouter's web-search plugin. Only used for role-model lookups,
+   * which send a public figure's name and nothing from the journal — the search
+   * query reaches a third-party search provider, so no request carrying the
+   * user's own writing may set this.
+   */
+  webSearch?: { maxResults: number }
   /** Reports each wait before a retry, so the UI can explain the delay. */
   onRetry?: (info: { attempt: number; maxAttempts: number; waitMs: number; reason: string }) => void
 }
@@ -310,6 +317,7 @@ async function attemptStreamChatCompletion(
     provider: providerRouting(req.responseFormat !== undefined, req.enforceZdr)
   }
   if (req.responseFormat !== undefined) body.response_format = req.responseFormat
+  if (req.webSearch) body.plugins = [{ id: 'web', max_results: req.webSearch.maxResults }]
 
   const overall = new AbortController()
   const onOuterAbort = (): void => overall.abort()

@@ -16,7 +16,8 @@ import {
   X
 } from 'lucide-react'
 import type { Decision } from '@shared/ipc-contract'
-import { LENS_LABELS, LENS_OPENERS, type LensKind } from '@shared/ipc-contract'
+import { LENS_OPENERS } from '@shared/ipc-contract'
+import { borrowedOpener } from '@shared/roleModels'
 import { useChatStore } from '../../store/chat'
 import MicButton from '../../components/voice/MicButton'
 import Message from './Message'
@@ -24,7 +25,12 @@ import PastChatsDropdown from './PastChatsDropdown'
 import AttachDecisionsModal from './AttachDecisionsModal'
 import SendReviewModal from './SendReviewModal'
 import ModelSwitcher from './ModelSwitcher'
-import LensSlashPopover, { filterLenses } from './LensSlashPopover'
+import LensSlashPopover, {
+  Avatar,
+  buildFrameOptions,
+  filterFrames,
+  type FrameOption
+} from './LensSlashPopover'
 import DecisionAtPopover, { filterDecisions } from './DecisionAtPopover'
 
 export default function ChatView() {
@@ -57,7 +63,24 @@ export default function ChatView() {
     void window.api.decisions.list().then(setAllDecisions).catch(() => setAllDecisions([]))
   }, [])
 
-  const lensResults = slashQuery === null ? [] : filterLenses(slashQuery)
+  const borrowedFrameworks = useChatStore((s) => s.borrowedFrameworks)
+  const frameOptions = buildFrameOptions(borrowedFrameworks)
+  const lensResults = slashQuery === null ? [] : filterFrames(frameOptions, slashQuery)
+
+  // The picker offers both kinds, so label and opener are resolved from the
+  // selection rather than looked up in the built-in table.
+  const activeFrame = lens
+    ? (frameOptions.find(
+        (o) => JSON.stringify(o.selection) === JSON.stringify(lens)
+      ) ?? null)
+    : null
+  const lensLabel = activeFrame?.label ?? null
+  const lensOpener =
+    lens?.kind === 'builtin'
+      ? LENS_OPENERS[lens.lens]
+      : activeFrame?.borrowedFrom
+        ? borrowedOpener(activeFrame.borrowedFrom, activeFrame.label)
+        : ''
   const atResults = atQuery === null ? [] : filterDecisions(allDecisions, atQuery)
   const popoverOpen = slashQuery !== null || atQuery !== null
 
@@ -86,8 +109,8 @@ export default function ChatView() {
     closePopovers()
   }
 
-  function pickLens(kind: LensKind) {
-    setLens(kind)
+  function pickLens(option: FrameOption) {
+    setLens(option.selection)
     setInput('')
     closePopovers()
     textareaRef.current?.focus()
@@ -169,7 +192,7 @@ export default function ChatView() {
 
   // With a lens armed over an attached decision there is nothing to type — the
   // lens is the instruction — so an empty composer is a valid request.
-  const lensRunReady = lens !== null && attachments.length > 0
+  const lensRunReady = lens !== null && lensLabel !== null && attachments.length > 0
   const canSend = input.trim().length > 0 || lensRunReady
 
   async function handleSend() {
@@ -180,7 +203,7 @@ export default function ChatView() {
       setReview('consent')
       return
     }
-    const text = input.trim() || (lens ? LENS_OPENERS[lens] : '')
+    const text = input.trim() || lensOpener
     setInput('')
     await sendMessage(text)
   }
@@ -188,7 +211,7 @@ export default function ChatView() {
   async function handleConfirmedSend() {
     confirmOnlineConsent()
     setReview(null)
-    const text = input.trim() || (lens ? LENS_OPENERS[lens] : '')
+    const text = input.trim() || lensOpener
     setInput('')
     await sendMessage(text)
   }
@@ -290,7 +313,7 @@ export default function ChatView() {
         {messages.length === 0 && !streaming && !sending ? (
           <EmptyState
             online={online}
-            lensReady={lensRunReady ? LENS_LABELS[lens] : null}
+            lensReady={lensRunReady ? lensLabel : null}
             onAttach={() => setShowAttach(true)}
             onRun={handleSend}
           />
@@ -322,8 +345,12 @@ export default function ChatView() {
         {lens && (
           <div className="mb-2 flex items-center gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-md border border-[rgb(var(--accent))] bg-[rgb(var(--accent))] px-2.5 py-1 text-[11.5px] font-medium text-accent-text dark:border-border dark:bg-bg-elevated dark:text-text">
-              <Sparkles size={11} strokeWidth={2} />
-              {LENS_LABELS[lens]}
+              {activeFrame?.borrowedFrom ? (
+                <Avatar name={activeFrame.borrowedFrom} size={14} />
+              ) : (
+                <Sparkles size={11} strokeWidth={2} />
+              )}
+              {lensLabel}
               <button
                 type="button"
                 onClick={() => setLens(null)}
@@ -344,7 +371,7 @@ export default function ChatView() {
         <div className="relative flex items-end gap-2 rounded-xl border border-border bg-bg-elevated px-3 py-2">
           {slashQuery !== null && (
             <LensSlashPopover
-              query={slashQuery}
+              results={lensResults}
               activeIndex={popoverIndex}
               onHoverIndex={setPopoverIndex}
               onSelect={pickLens}
@@ -367,7 +394,7 @@ export default function ChatView() {
             onKeyDown={handleKeyDown}
             placeholder={
               lensRunReady
-                ? `Press ⏎ to run ${LENS_LABELS[lens]} — or add a question first…`
+                ? `Press ⏎ to run ${lensLabel} — or add a question first…`
                 : lens
                   ? 'Type @ to pick the decision this lens applies to…'
                   : 'Ask anything — / for a lens, @ to attach a decision…'

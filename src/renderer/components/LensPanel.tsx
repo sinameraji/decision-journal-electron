@@ -25,7 +25,7 @@ export default function LensPanel({ decisionId }: { decisionId: string }) {
   const [hovered, setHovered] = useState<LensKind | null>(null)
 
   function run(kind: LensKind) {
-    startLens(kind, decisionId)
+    startLens({ kind: 'builtin', lens: kind }, decisionId)
     navigate('/chat')
   }
 

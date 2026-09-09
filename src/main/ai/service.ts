@@ -28,7 +28,7 @@ import type {
   StoredChatMessage
 } from '@shared/ai'
 import { isAiProvider } from '@shared/ai'
-import type { LensKind } from '@shared/ipc-contract'
+import type { LensSelection } from '@shared/ai'
 import { isLensKind } from '@shared/ipc-contract'
 import {
   appendMessage,
@@ -101,6 +101,17 @@ function fail(code: AiErrorCode, message: string): SendChatResult {
   return { ok: false, code, message }
 }
 
+/** Accepts either frame kind, and nothing else. */
+function parseLensSelection(value: unknown): LensSelection | null {
+  if (value == null || typeof value !== 'object') return null
+  const v = value as Partial<LensSelection> & { lens?: unknown; frameworkId?: unknown }
+  if (v.kind === 'builtin' && isLensKind(v.lens)) return { kind: 'builtin', lens: v.lens }
+  if (v.kind === 'borrowed' && typeof v.frameworkId === 'string' && v.frameworkId) {
+    return { kind: 'borrowed', frameworkId: v.frameworkId }
+  }
+  return null
+}
+
 function sanitizeAttachments(value: unknown): AttachmentScope {
   if (value == null || typeof value !== 'object') return { decisionIds: [] }
   const ids = (value as AttachmentScope).decisionIds
@@ -123,7 +134,8 @@ interface ResolvedRequest {
   totalChars: number
   includeMemories: boolean
   memoriesIncluded: boolean
-  lens: LensKind | null
+  lens: LensSelection | null
+  lensLabel: string | null
 }
 
 /**
@@ -167,7 +179,7 @@ async function resolve(
   }
 
   const includeMemories = params.includeMemories === true
-  const lens = isLensKind(params.lens) ? params.lens : null
+  const lens = parseLensSelection(params.lens)
   const built = buildSystemPrompt({
     db,
     provider,
@@ -197,7 +209,8 @@ async function resolve(
       totalChars,
       includeMemories,
       memoriesIncluded: built.memoriesIncluded,
-      lens
+      lens,
+      lensLabel: built.lensLabel
     }
   }
 }
@@ -247,7 +260,7 @@ export async function buildPayloadPreview(params: {
       withinBudget: r.totalChars <= MAX_PROMPT_CHARS,
       estimatedPromptCostUsd,
       memoriesIncluded: r.memoriesIncluded,
-      lens: r.lens
+      lensLabel: r.lensLabel
     }
   }
 }
@@ -338,7 +351,9 @@ export async function sendChat(
     if (existing.includeMemories !== r.includeMemories) {
       setConversationIncludeMemories(r.db, existing.id, r.includeMemories)
     }
-    if (existing.lens !== r.lens) setConversationLens(r.db, existing.id, r.lens)
+    if (JSON.stringify(existing.lens) !== JSON.stringify(r.lens)) {
+      setConversationLens(r.db, existing.id, r.lens)
+    }
   }
   const convId = conversationId as string
 

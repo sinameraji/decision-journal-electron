@@ -8,7 +8,8 @@ import type {
   StoredChatMessage
 } from '@shared/ai'
 import { isAiProvider } from '@shared/ai'
-import type { ConversationSummary, LensKind } from '@shared/ipc-contract'
+import type { LensSelection } from '@shared/ai'
+import type { ConversationSummary } from '@shared/ipc-contract'
 import { isLensKind } from '@shared/ipc-contract'
 
 type DB = Database.Database
@@ -59,10 +60,31 @@ function rowToMeta(row: ConversationRow): ConversationMeta {
     attachments: parseAttachments(row.attachments),
     onlineConsentGiven: row.online_consent === 1,
     includeMemories: row.include_memories === 1,
-    lens: isLensKind(row.lens) ? row.lens : null,
+    lens: parseLens(row.lens),
     createdAt: row.created_at,
     updatedAt: row.updated_at
   }
+}
+
+/**
+ * A lens is stored as JSON so a borrowed framework and a built-in lens share
+ * one column. Legacy rows hold a bare built-in kind, which still parses.
+ */
+function parseLens(raw: string | null): LensSelection | null {
+  if (!raw) return null
+  if (isLensKind(raw)) return { kind: 'builtin', lens: raw }
+  try {
+    const parsed = JSON.parse(raw) as LensSelection
+    if (parsed?.kind === 'builtin' && isLensKind(parsed.lens)) return parsed
+    if (parsed?.kind === 'borrowed' && typeof parsed.frameworkId === 'string') return parsed
+  } catch {
+    // fall through
+  }
+  return null
+}
+
+export function serializeLens(lens: LensSelection | null): string | null {
+  return lens ? JSON.stringify(lens) : null
 }
 
 function parseStatus(raw: string): MessageStatus {
@@ -89,7 +111,7 @@ export function createConversation(
     modelId: string
     attachments: AttachmentScope
     includeMemories: boolean
-    lens: LensKind | null
+    lens: LensSelection | null
   }
 ): ConversationMeta {
   const id = randomUUID()
@@ -107,7 +129,7 @@ export function createConversation(
     provider: params.provider,
     attachments: JSON.stringify(params.attachments.decisionIds),
     includeMemories: params.includeMemories ? 1 : 0,
-    lens: params.lens,
+    lens: serializeLens(params.lens),
     createdAt: now,
     updatedAt: now
   })
@@ -235,8 +257,15 @@ export function setConversationProvider(
   )
 }
 
-export function setConversationLens(db: DB, conversationId: string, lens: LensKind | null): void {
-  db.prepare('UPDATE conversations SET lens = ? WHERE id = ?').run(lens, conversationId)
+export function setConversationLens(
+  db: DB,
+  conversationId: string,
+  lens: LensSelection | null
+): void {
+  db.prepare('UPDATE conversations SET lens = ? WHERE id = ?').run(
+    serializeLens(lens),
+    conversationId
+  )
 }
 
 export function setConversationIncludeMemories(

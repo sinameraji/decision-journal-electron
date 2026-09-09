@@ -9,11 +9,13 @@ import Reviews from './routes/Reviews'
 import Analytics from './routes/Analytics'
 import Chat from './routes/chat'
 import Memory from './routes/Memory'
+import RoleModels from './routes/RoleModels'
 import Settings from './routes/Settings'
 import AppShell from './components/AppShell'
 import { useAuthStore } from './store/auth'
 import { useChatStore } from './store/chat'
 import { useMemoryStore } from './store/memory'
+import { useRoleModelsStore } from './store/roleModels'
 import { useThemeStore } from './store/theme'
 
 export default function App() {
@@ -30,6 +32,7 @@ export default function App() {
     if (!unlocked) {
       useChatStore.getState().reset()
       useMemoryStore.getState().reset()
+      useRoleModelsStore.getState().reset()
     }
   }, [unlocked])
 
@@ -53,6 +56,7 @@ export default function App() {
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/chat" element={<Chat />} />
         <Route path="/memory" element={<Memory />} />
+        <Route path="/role-models" element={<RoleModels />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="*" element={<Navigate to="/decisions" replace />} />
       </Routes>

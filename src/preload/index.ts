@@ -41,6 +41,12 @@ import type {
   MemorySettings,
   MemoryState
 } from '@shared/memory'
+import type {
+  BorrowedFramework,
+  RoleModel,
+  RoleModelResult,
+  RoleModelSettings
+} from '@shared/roleModels'
 
 const api: Api = {
   vault: {
@@ -119,6 +125,31 @@ const api: Api = {
       const listener = () => cb()
       ipcRenderer.on('memory:changed', listener)
       return () => ipcRenderer.removeListener('memory:changed', listener)
+    }
+  },
+  roleModels: {
+    getSettings: (): Promise<RoleModelSettings> => ipcRenderer.invoke('rolemodels:get-settings'),
+    setEnabled: (enabled: boolean): Promise<RoleModelSettings> =>
+      ipcRenderer.invoke('rolemodels:set-enabled', enabled),
+    setModel: (modelId: string): Promise<RoleModelSettings> =>
+      ipcRenderer.invoke('rolemodels:set-model', modelId),
+    list: (): Promise<RoleModel[]> => ipcRenderer.invoke('rolemodels:list'),
+    add: (query: string): Promise<RoleModelResult> => ipcRenderer.invoke('rolemodels:add', query),
+    confirm: (id: string, name: string): Promise<RoleModelResult> =>
+      ipcRenderer.invoke('rolemodels:confirm', id, name),
+    reject: (id: string, hint: string): Promise<RoleModelResult> =>
+      ipcRenderer.invoke('rolemodels:reject', id, hint),
+    rebuild: (id: string): Promise<RoleModelResult> => ipcRenderer.invoke('rolemodels:rebuild', id),
+    remove: (id: string): Promise<RoleModelResult> => ipcRenderer.invoke('rolemodels:remove', id),
+    setFrameworkEnabled: (frameworkId: string, enabled: boolean): Promise<RoleModelResult> =>
+      ipcRenderer.invoke('rolemodels:set-framework-enabled', frameworkId, enabled),
+    frameworks: (): Promise<BorrowedFramework[]> => ipcRenderer.invoke('rolemodels:frameworks'),
+    openSource: (url: string): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke('rolemodels:open-source', url),
+    onChanged: (cb: () => void) => {
+      const listener = () => cb()
+      ipcRenderer.on('rolemodels:changed', listener)
+      return () => ipcRenderer.removeListener('rolemodels:changed', listener)
     }
   },
   ai: {

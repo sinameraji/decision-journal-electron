@@ -3,6 +3,7 @@ import type {
   AiErrorCode,
   AiEvent,
   AiProvider,
+  LensSelection,
   AttachmentScope,
   ConversationMeta,
   OnlineCatalog,
@@ -12,6 +13,12 @@ import type {
   SendChatResult,
   StoredChatMessage
 } from './ai'
+import type {
+  BorrowedFramework,
+  RoleModel,
+  RoleModelResult,
+  RoleModelSettings
+} from './roleModels'
 import type {
   MemoryActionResult,
   MemoryBackfillEstimate,
@@ -358,6 +365,26 @@ export interface Api {
     runBackfill(decisionIds: string[]): Promise<MemoryActionResult>
     onChanged(cb: () => void): () => void
   }
+  roleModels: {
+    getSettings(): Promise<RoleModelSettings>
+    /** Requires online AI; enabling chat does not enable this. */
+    setEnabled(enabled: boolean): Promise<RoleModelSettings>
+    setModel(modelId: string): Promise<RoleModelSettings>
+    list(): Promise<RoleModel[]>
+    /** Adds a name and starts the bounded identification loop. */
+    add(query: string): Promise<RoleModelResult>
+    confirm(id: string, name: string): Promise<RoleModelResult>
+    /** None of the candidates were right; try again with a distinguishing detail. */
+    reject(id: string, hint: string): Promise<RoleModelResult>
+    rebuild(id: string): Promise<RoleModelResult>
+    remove(id: string): Promise<RoleModelResult>
+    setFrameworkEnabled(frameworkId: string, enabled: boolean): Promise<RoleModelResult>
+    /** Enabled frameworks, for the chat frame picker. */
+    frameworks(): Promise<BorrowedFramework[]>
+    /** Opens a citation in the browser, only if it is a stored source. */
+    openSource(url: string): Promise<{ ok: boolean; error?: string }>
+    onChanged(cb: () => void): () => void
+  }
   ai: {
     /** Non-secret settings. Never returns the stored API key. */
     getSettings(): Promise<OnlineSettings>
@@ -378,7 +405,7 @@ export interface Api {
       modelId: string
       attachments: AttachmentScope
       includeMemories: boolean
-      lens: LensKind | null
+      lens: LensSelection | null
       pendingText: string
     }): Promise<
       { ok: true; preview: PayloadPreview } | { ok: false; code: AiErrorCode; message: string }

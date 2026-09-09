@@ -76,9 +76,19 @@ Rules when touching this: proposals are never auto-approved; no item is displaye
 
 **Extraction is zero-data-retention only, with no override.** Chat lets the user knowingly pick a model without a ZDR route, because they press send and see the disclosure each time. Extraction has no such moment — it runs by itself after every save — so a model without a ZDR provider is refused rather than offered. Do not add an escape hatch here to match chat's.
 
+### Role models (`src/main/rolemodels/`)
+
+A third optional online feature. The user names a public figure; the app confirms who they meant, then builds a sourced profile and extracts decision frameworks that appear in the chat frame picker beside the built-in lenses.
+
+- `service.ts` — a bounded two-step flow, never an open loop. Identification is capped at `MAX_DISAMBIGUATION_ROUNDS`; when it runs out the app asks the user for a distinguishing detail rather than guessing again.
+- `prompt.ts` — three passes: identify, profile, frameworks. They are separate because one combined pass ran out of output budget and returned only "known for". The profile instruction explicitly forbids narrating its own process — without that, the model filled `summary` with "web search needed…" and returned no claims.
+- `validate.ts` — **no claim about a real person is stored without a resolvable http(s) citation.** The schema requires one; this enforces it anyway.
+
+Rules when touching this: requests here send a public figure's name and **never** journal content, which is why they may enable web search — no journal-bearing request may. Extraction stays ZDR-only. Citation links open only via `rolemodels:open-source`, which refuses any URL not already stored as a source, so a model-generated link cannot be opened just because it was rendered. Avatars are initials, never downloaded images — remote images would mean opening the network gate.
+
 ### State management
 
-Separate Zustand stores per concern in `src/renderer/store/`: `auth`, `theme`, `decisions`, `chat`, `memory`, `transcription`, `commandPalette`.
+Separate Zustand stores per concern in `src/renderer/store/`: `auth`, `theme`, `decisions`, `chat`, `memory`, `roleModels`, `transcription`, `commandPalette`.
 
 ### Path aliases
 

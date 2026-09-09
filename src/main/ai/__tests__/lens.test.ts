@@ -9,6 +9,7 @@ vi.mock('../../db/decisions', () => ({
   listDecisions: () => decisions.all
 }))
 vi.mock('../../memory/context', () => ({ renderApprovedMemories: () => null }))
+vi.mock('../../rolemodels/store', () => ({ getFramework: () => null }))
 
 const { buildSystemPrompt } = await import('../context')
 
@@ -54,7 +55,7 @@ describe('a lens reaches the prompt as an instruction, not as pasted text', () =
       db,
       provider: 'openrouter',
       attachedDecisionIds: [],
-      lens: 'pre-mortem'
+      lens: { kind: 'builtin', lens: 'pre-mortem' }
     })
     expect(built.systemPrompt).toMatch(/Pre-mortem/i)
   })
@@ -65,7 +66,7 @@ describe('a lens reaches the prompt as an instruction, not as pasted text', () =
       db,
       provider: 'openrouter',
       attachedDecisionIds: [],
-      lens: 'opportunity-cost'
+      lens: { kind: 'builtin', lens: 'opportunity-cost' }
     })
     expect(built.systemPrompt).not.toContain('SENTINEL-not-attached')
   })
@@ -81,5 +82,29 @@ describe('running a lens with an empty composer', () => {
 
   it('gives each lens its own opener', () => {
     expect(new Set(Object.values(LENS_OPENERS)).size).toBe(LENS_KINDS.length)
+  })
+})
+
+describe('a borrowed framework is resolved the same way', () => {
+  const db = {} as never
+
+  it('is ignored when the framework no longer exists', () => {
+    const built = buildSystemPrompt({
+      db,
+      provider: 'openrouter',
+      attachedDecisionIds: [],
+      lens: { kind: 'borrowed', frameworkId: 'gone' }
+    })
+    expect(built.lensLabel).toBeNull()
+  })
+
+  it('labels a built-in frame', () => {
+    const built = buildSystemPrompt({
+      db,
+      provider: 'openrouter',
+      attachedDecisionIds: [],
+      lens: { kind: 'builtin', lens: 'pre-mortem' }
+    })
+    expect(built.lensLabel).toBe(LENS_LABELS['pre-mortem'])
   })
 })

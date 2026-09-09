@@ -1,4 +1,12 @@
 import type { LensKind } from './ipc-contract'
+
+/**
+ * Which frame a request runs under. Either one of the four built-in lenses, or
+ * a framework borrowed from a role model, addressed by its id.
+ */
+export type LensSelection =
+  | { kind: 'builtin'; lens: LensKind }
+  | { kind: 'borrowed'; frameworkId: string }
 /**
  * Shared types for the AI provider layer.
  *
@@ -184,7 +192,7 @@ export interface ConversationMeta {
   /** Whether approved memories are sent with this conversation. Off by default. */
   includeMemories: boolean
   /** Analytical frame this thread is running under, if any. */
-  lens: LensKind | null
+  lens: LensSelection | null
   createdAt: number
   updatedAt: number
 }
@@ -206,8 +214,8 @@ export interface PayloadPreview {
   estimatedPromptCostUsd: number | null
   /** True when approved memories are part of this payload. */
   memoriesIncluded: boolean
-  /** Lens instruction included in this payload, if any. */
-  lens: LensKind | null
+  /** Human-readable name of the frame in this payload, if any. */
+  lensLabel: string | null
 }
 
 export interface SendChatParams {
@@ -218,7 +226,7 @@ export interface SendChatParams {
   attachments: AttachmentScope
   includeMemories: boolean
   /** Analytical frame to apply, appended to the system prompt. */
-  lens: LensKind | null
+  lens: LensSelection | null
   /** Set once the user has reviewed the online disclosure for this thread. */
   onlineConsentConfirmed: boolean
 }
