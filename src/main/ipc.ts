@@ -1416,7 +1416,8 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('app:check-for-updates', async (): Promise<void> => {
-    await checkForUpdates()
+    // Reached only by the Check button, so a failure here is worth reporting.
+    await checkForUpdates({ userAsked: true })
   })
 
   ipcMain.handle('app:download-update', async (): Promise<void> => {
