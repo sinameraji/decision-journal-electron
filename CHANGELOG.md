@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/sinameraji/decision-journal-electron/compare/v0.7.1...v0.8.0) (2026-09-09)
+
+
+### Features
+
+* role models, with sourced profiles and borrowed frameworks ([87ea040](https://github.com/sinameraji/decision-journal-electron/commit/87ea0409bf7d644d0472bd9fefd804aeeaf35067))
+
 ## [0.7.1](https://github.com/sinameraji/decision-journal-electron/compare/v0.7.0...v0.7.1) (2026-09-08)
 
 
