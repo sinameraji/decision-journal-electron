@@ -50,6 +50,8 @@ export default function Settings() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [restoreFolder, setRestoreFolder] = useState<string | null>(null)
+  const [exporting, setExporting] = useState(false)
+  const [backupNote, setBackupNote] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const [modelBusy, setModelBusy] = useState<string | null>(null)
   const [justDeleted, setJustDeleted] = useState<string | null>(null)
   const [showSupport, setShowSupport] = useState(false)
@@ -143,6 +145,19 @@ export default function Settings() {
     }
   }
 
+  async function handleBackup() {
+    if (exporting) return
+    setExporting(true)
+    setBackupNote(null)
+    const res = await window.api.vault.export()
+    setExporting(false)
+    if (res.ok) {
+      setBackupNote({ kind: 'ok', text: `Saved to ${res.path}` })
+    } else if (res.error !== 'canceled') {
+      setBackupNote({ kind: 'error', text: `Backup failed: ${res.error}` })
+    }
+  }
+
   async function handleStartRestore() {
     if (busy) return
     setError(null)
@@ -227,6 +242,26 @@ export default function Settings() {
                 className="rounded-md border border-border bg-bg px-3 py-1.5 text-[12px] text-text hover:bg-nav-active"
               >
                 Lock
+              </button>
+            }
+          />
+          <Row
+            icon={<Download size={16} strokeWidth={1.75} />}
+            title="Backup vault"
+            subtitle={
+              backupNote
+                ? backupNote.text
+                : 'Save an encrypted copy of your vault and all decisions to a folder.'
+            }
+            subtitleTone={backupNote?.kind === 'error' ? 'error' : undefined}
+            right={
+              <button
+                type="button"
+                onClick={handleBackup}
+                disabled={exporting || busy}
+                className="rounded-md border border-border bg-bg px-3 py-1.5 text-[12px] text-text hover:bg-nav-active disabled:opacity-50"
+              >
+                {exporting ? 'Saving…' : 'Back up…'}
               </button>
             }
           />
@@ -466,11 +501,13 @@ function Row({
   icon,
   title,
   subtitle,
+  subtitleTone,
   right
 }: {
   icon: React.ReactNode
   title: string
-  subtitle: string
+  subtitle: React.ReactNode
+  subtitleTone?: 'error'
   right: React.ReactNode
 }) {
   return (
@@ -480,7 +517,13 @@ function Row({
       </div>
       <div className="min-w-0 flex-1">
         <div className="text-[13.5px] font-medium text-text">{title}</div>
-        <div className="mt-0.5 text-[12px] text-text-muted">{subtitle}</div>
+        <div
+        className={`mt-0.5 break-all text-[12px] ${
+          subtitleTone === 'error' ? 'text-red-500/90' : 'text-text-muted'
+        }`}
+      >
+        {subtitle}
+      </div>
       </div>
       <div>{right}</div>
     </div>
