@@ -11,6 +11,17 @@
  * can keep guessing forever is a worse failure than one that gives up and asks.
  */
 
+/**
+ * Model used for lookups, deliberately independent of the chat default.
+ *
+ * A lookup fires three web-search-backed calls back to back, so it needs a
+ * model with room to spread them across. Zero-data-retention routing pins us to
+ * private providers, and the GPT-5.6 family has only three between them — a
+ * lookup exhausts that and fails, while chat's one-at-a-time pace does not.
+ * This model is served by more than twenty.
+ */
+export const DEFAULT_ROLE_MODEL_MODEL = 'z-ai/glm-5.3'
+
 /** Hard ceiling on "is this the right person?" rounds before we ask for help. */
 export const MAX_DISAMBIGUATION_ROUNDS = 3
 
@@ -70,6 +81,22 @@ export const CLAIM_SECTION_BLURBS: Record<ClaimSection, string> = {
     'Where imitating them would be a mistake — survivorship bias, unusual circumstances, or conduct worth not copying.'
 }
 
+/**
+ * Where a claim's evidence comes from.
+ *
+ * People worth studying are usually polarising, so second-hand opinion says as
+ * much about the commentator as the subject. A claim grounded in the person's
+ * own essays, talks, interviews or published work is worth more than one
+ * grounded in someone's view of them, and the difference should be visible
+ * rather than averaged away.
+ */
+export type SourceType = 'primary' | 'secondary'
+
+export const SOURCE_TYPE_LABELS: Record<SourceType, string> = {
+  primary: 'Their own words',
+  secondary: 'Third-party reporting'
+}
+
 /** A single sourced statement. No claim is stored without a citation. */
 export interface RoleModelClaim {
   id: string
@@ -77,6 +104,7 @@ export interface RoleModelClaim {
   text: string
   sourceUrl: string
   sourceTitle: string | null
+  sourceType: SourceType
 }
 
 /**
@@ -94,6 +122,8 @@ export interface RoleModelFramework {
   instruction: string
   sourceUrl: string | null
   sourceTitle: string | null
+  /** Frameworks are only worth borrowing if the person actually articulated them. */
+  sourceType: SourceType
   /** Off hides it from the picker without deleting it. */
   enabled: boolean
 }
@@ -120,11 +150,32 @@ export interface RoleModel {
   frameworks: RoleModelFramework[]
   /** Candidates awaiting the user's confirmation. */
   candidates: RoleModelCandidate[]
+  /** Sources the user added by hand, newest first. */
+  addedSources: RoleModelSource[]
   /** Rounds of disambiguation used so far, against MAX_DISAMBIGUATION_ROUNDS. */
   rounds: number
   lastError: string | null
   createdAt: number
   updatedAt: number
+}
+
+/**
+ * A source the user pointed at directly — an essay, a speech transcript, an
+ * interview. Someone with decades of published work cannot be captured in one
+ * lookup, so the profile grows as the user feeds it the pieces that matter.
+ */
+export interface RoleModelSource {
+  id: string
+  roleModelId: string
+  url: string
+  title: string | null
+  status: 'reading' | 'added' | 'error'
+  /** How many claims this source contributed. */
+  claimsAdded: number
+  /** How many frameworks it contributed. */
+  frameworksAdded: number
+  error: string | null
+  createdAt: number
 }
 
 export interface RoleModelSettings {

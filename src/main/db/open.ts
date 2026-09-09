@@ -289,6 +289,38 @@ const MIGRATIONS: Migration[] = [
         ON role_model_frameworks(role_model_id);
     `
   }
+,
+  {
+    // Whether a claim rests on the person's own words or on someone else's
+    // account of them. Existing rows predate the distinction, so they are
+    // marked secondary rather than being credited as primary.
+    version: 9,
+    sql: `
+      ALTER TABLE role_model_claims ADD COLUMN source_type TEXT NOT NULL DEFAULT 'secondary';
+      ALTER TABLE role_model_frameworks ADD COLUMN source_type TEXT NOT NULL DEFAULT 'secondary';
+    `
+  }
+,
+  {
+    // Sources the user pointed at by hand, so a profile can grow over time
+    // rather than being whatever one lookup happened to find.
+    version: 10,
+    sql: `
+      CREATE TABLE IF NOT EXISTS role_model_added_sources (
+        id               TEXT PRIMARY KEY,
+        role_model_id    TEXT NOT NULL REFERENCES role_models(id) ON DELETE CASCADE,
+        url              TEXT NOT NULL,
+        title            TEXT,
+        status           TEXT NOT NULL,
+        claims_added     INTEGER NOT NULL DEFAULT 0,
+        frameworks_added INTEGER NOT NULL DEFAULT 0,
+        error            TEXT,
+        created_at       INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_role_model_added_sources_owner
+        ON role_model_added_sources(role_model_id, created_at DESC);
+    `
+  }
 ]
 
 function runMigrations(db: DB): void {
@@ -337,7 +369,18 @@ const REQUIRED_COLUMNS: { table: string; column: string; definition: string }[] 
   { table: 'conversations', column: 'include_memories', definition: 'INTEGER NOT NULL DEFAULT 0' },
   { table: 'memory_items', column: 'question', definition: 'TEXT' },
   // Migration 7
-  { table: 'conversations', column: 'lens', definition: 'TEXT' }
+  { table: 'conversations', column: 'lens', definition: 'TEXT' },
+  // Migration 9
+  {
+    table: 'role_model_claims',
+    column: 'source_type',
+    definition: `TEXT NOT NULL DEFAULT 'secondary'`
+  },
+  {
+    table: 'role_model_frameworks',
+    column: 'source_type',
+    definition: `TEXT NOT NULL DEFAULT 'secondary'`
+  }
 ]
 
 /** Tables the current code needs, with the SQL to recreate an absent one. */
@@ -394,6 +437,15 @@ const REQUIRED_TABLES: { name: string; sql: string }[] = [
       name TEXT NOT NULL, summary TEXT NOT NULL, instruction TEXT NOT NULL,
       source_url TEXT, source_title TEXT, enabled INTEGER NOT NULL DEFAULT 1,
       created_at INTEGER NOT NULL)`
+  },
+  {
+    name: 'role_model_added_sources',
+    sql: `CREATE TABLE IF NOT EXISTS role_model_added_sources (
+      id TEXT PRIMARY KEY,
+      role_model_id TEXT NOT NULL REFERENCES role_models(id) ON DELETE CASCADE,
+      url TEXT NOT NULL, title TEXT, status TEXT NOT NULL,
+      claims_added INTEGER NOT NULL DEFAULT 0, frameworks_added INTEGER NOT NULL DEFAULT 0,
+      error TEXT, created_at INTEGER NOT NULL)`
   },
   {
     name: 'memory_suppressions',

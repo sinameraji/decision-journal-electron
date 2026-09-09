@@ -385,6 +385,10 @@ export interface Api {
     /** None of the candidates were right; try again with a distinguishing detail. */
     reject(id: string, hint: string): Promise<RoleModelResult>
     rebuild(id: string): Promise<RoleModelResult>
+    /** Restarts a failed lookup, from identification or profile as appropriate. */
+    retry(id: string): Promise<RoleModelResult>
+    /** Reads one document by this person and appends what it adds. */
+    addSource(id: string, url: string): Promise<RoleModelResult>
     remove(id: string): Promise<RoleModelResult>
     setFrameworkEnabled(frameworkId: string, enabled: boolean): Promise<RoleModelResult>
     /** Enabled frameworks, for the chat frame picker. */
@@ -402,6 +406,9 @@ export interface Api {
     clearApiKey(): Promise<OnlineSettings>
     setDefaultModel(modelId: string): Promise<OnlineSettings>
     catalog(): Promise<OnlineCatalog>
+    /** The provider and model chat was last using, so it survives a restart. */
+    getLastModel(): Promise<{ provider: string; modelId: string } | null>
+    setLastModel(provider: AiProvider, modelId: string): Promise<void>
     /** Records that the user accepted a model with no zero-data-retention route. */
     acknowledgeNonZdr(modelId: string): Promise<OnlineSettings>
     refreshCatalog(): Promise<

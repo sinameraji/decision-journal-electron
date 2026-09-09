@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
-import { Check, ChevronDown, Globe, Laptop, Settings2 } from 'lucide-react'
+import { useEffect, useRef } from 'react'
+import { Check, ChevronDown, Globe, Laptop, Loader2, Settings2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { useChatStore } from '../../store/chat'
 
 const QUICK_ONLINE = 6
@@ -9,7 +10,8 @@ const QUICK_ONLINE = 6
  * Shows the handful you are likely to want, then a link to the full list.
  */
 export default function ModelSwitcher({ label }: { label: string }) {
-  const [open, setOpen] = useState(false)
+  const open = useChatStore((s) => s.switcherOpen)
+  const setOpen = useChatStore((s) => s.setSwitcherOpen)
   const ref = useRef<HTMLDivElement>(null)
 
   const provider = useChatStore((s) => s.provider)
@@ -20,6 +22,7 @@ export default function ModelSwitcher({ label }: { label: string }) {
   const online = useChatStore((s) => s.online)
   const selectModel = useChatStore((s) => s.selectModel)
   const openModelSetup = useChatStore((s) => s.openModelSetup)
+  const refreshOnline = useChatStore((s) => s.refreshOnline)
 
   useEffect(() => {
     if (!open) return
@@ -38,6 +41,12 @@ export default function ModelSwitcher({ label }: { label: string }) {
   }, [open])
 
   const onlineReady = online?.enabled === true && online.hasKey
+
+  useEffect(() => {
+    // Opening the menu is the moment the catalog matters; ask for it then, so a
+    // lazy fetch has a reason to run and its result lands in view.
+    if (open && onlineReady && onlineCatalog.length === 0) void refreshOnline()
+  }, [open, onlineReady, onlineCatalog.length, refreshOnline])
   // Default first, then the rest — the list is long and mostly irrelevant here.
   const quickOnline = onlineReady
     ? [...onlineCatalog]
@@ -83,19 +92,58 @@ export default function ModelSwitcher({ label }: { label: string }) {
             </>
           )}
 
+          {/* The online group is always shown. Omitting it when unavailable
+              made a configured-but-empty catalog indistinguishable from online
+              AI not existing at all. */}
+          <GroupLabel icon={<Globe size={10} strokeWidth={2} />}>Online</GroupLabel>
+
+          {!onlineReady && (
+            <Link
+              to="/settings"
+              state={{ section: 'online' }}
+              onClick={() => setOpen(false)}
+              className="flex w-full items-start gap-2 px-3 py-2.5 text-left hover:bg-nav-active"
+            >
+              <span className="flex h-3.5 w-3.5 shrink-0" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-[12.5px] text-text">
+                  {online?.enabled ? 'Add your OpenRouter key' : 'Online models are off'}
+                </span>
+                <span className="mt-0.5 block text-[10.5px] text-text-muted">
+                  {online?.enabled
+                    ? 'Online AI is on but no key is saved — set one up in Settings.'
+                    : 'Turn on online AI in Settings to chat with a frontier model.'}
+                </span>
+              </span>
+            </Link>
+          )}
+
+          {onlineReady && quickOnline.length === 0 && (
+            <div className="flex items-center gap-2 px-3 py-2.5 text-[12px] text-text-muted">
+              <Loader2 size={12} strokeWidth={2} className="animate-spin" />
+              Loading models…
+            </div>
+          )}
+
           {quickOnline.length > 0 && (
             <>
-              <GroupLabel icon={<Globe size={10} strokeWidth={2} />}>Online</GroupLabel>
               {quickOnline.map((m) => (
                 <Row
                   key={m.id}
                   active={provider === 'openrouter' && activeModel === m.id}
                   title={m.name}
-                  sub={
+                  sub={[
                     m.promptUsdPerMillion !== null
                       ? `$${m.promptUsdPerMillion.toFixed(2)}/M in · $${(m.completionUsdPerMillion ?? 0).toFixed(2)}/M out`
-                      : undefined
-                  }
+                      : null,
+                    // Route count predicts rate limits far better than price does.
+                    m.zdrProviderCount > 0
+                      ? `${m.zdrProviderCount} private route${m.zdrProviderCount === 1 ? '' : 's'}`
+                      : null
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                  thin={m.zdrProviderCount > 0 && m.zdrProviderCount < 4}
                   onClick={() => pick('openrouter', m.id)}
                 />
               ))}
@@ -132,11 +180,13 @@ function Row({
   active,
   title,
   sub,
+  thin,
   onClick
 }: {
   active: boolean
   title: string
   sub?: string
+  thin?: boolean
   onClick: () => void
 }) {
   return (
@@ -150,7 +200,17 @@ function Row({
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[12.5px] text-text">{title}</span>
-        {sub && <span className="mt-0.5 block truncate text-[10.5px] text-text-muted">{sub}</span>}
+        {sub && (
+          <span
+            className={[
+              'mt-0.5 block truncate text-[10.5px]',
+              thin ? 'text-amber-700 dark:text-amber-400' : 'text-text-muted'
+            ].join(' ')}
+            title={thin ? 'Few private routes — more likely to be rate-limited' : undefined}
+          >
+            {sub}
+          </span>
+        )}
       </span>
     </button>
   )

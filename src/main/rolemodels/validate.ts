@@ -7,7 +7,7 @@
  * than shown.
  */
 
-import type { ClaimSection, RoleModelCandidate } from '@shared/roleModels'
+import type { ClaimSection, RoleModelCandidate, SourceType } from '@shared/roleModels'
 import { CLAIM_SECTIONS, MAX_CANDIDATES } from '@shared/roleModels'
 
 export const MAX_CLAIMS_PER_SECTION = 6
@@ -65,6 +65,17 @@ export interface ValidatedClaim {
   text: string
   sourceUrl: string
   sourceTitle: string | null
+  sourceType: SourceType
+}
+
+/**
+ * Anything not explicitly "primary" is treated as secondary. Overstating a
+ * claim's provenance is the failure that matters — a third-party opinion
+ * presented as the person's own words is exactly what this distinction exists
+ * to prevent.
+ */
+function parseSourceType(value: unknown): SourceType {
+  return value === 'primary' ? 'primary' : 'secondary'
 }
 
 export interface ValidatedFramework {
@@ -73,6 +84,7 @@ export interface ValidatedFramework {
   instruction: string
   sourceUrl: string | null
   sourceTitle: string | null
+  sourceType: SourceType
 }
 
 export interface ValidatedProfile {
@@ -111,7 +123,8 @@ export function validateProfile(raw: unknown): ValidatedProfile {
       section: s,
       text,
       sourceUrl: c.sourceUrl,
-      sourceTitle: str(c.sourceTitle, 160)
+      sourceTitle: str(c.sourceTitle, 160),
+      sourceType: parseSourceType(c.sourceType)
     })
   }
 
@@ -127,7 +140,8 @@ export function validateProfile(raw: unknown): ValidatedProfile {
       summary,
       instruction,
       sourceUrl: isUsableSource(f.sourceUrl) ? f.sourceUrl : null,
-      sourceTitle: str(f.sourceTitle, 160)
+      sourceTitle: str(f.sourceTitle, 160),
+      sourceType: parseSourceType(f.sourceType)
     })
     if (frameworks.length >= MAX_FRAMEWORKS) break
   }

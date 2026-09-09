@@ -65,12 +65,28 @@ describe('which failures are safe to retry', () => {
   })
 
   it('a rate limit blames the provider, not the user\'s key', () => {
-    // The old copy read "OpenRouter is rate-limiting this key", which sent the
-    // user off to check an API key that was fine. The limit is upstream.
-    const hint = AI_ERROR_HINTS['rate-limited']
-    expect(hint).not.toMatch(/rate-limiting (this|your) key/i)
-    expect(hint).toMatch(/provider/i)
-    expect(hint).toMatch(/not your (api )?key/i)
+    // Assert on the message the user actually sees, not on the hint map. The
+    // first version of this test checked only the map — so when the map was
+    // corrected and the thrown message was not, it passed while the UI still
+    // read "OpenRouter is rate-limiting this key."
+    const shown = errorForStatus(429, '').message
+    expect(shown).not.toMatch(/rate-limiting (this|your) key/i)
+    expect(shown).toMatch(/provider/i)
+    expect(shown).toMatch(/not your (api )?key/i)
+  })
+
+  it('every thrown message matches the shared hint for its code', () => {
+    // The two strings drifted once; this fails if they ever drift again.
+    for (const status of [401, 402, 408, 429]) {
+      const e = errorForStatus(status, '')
+      expect(e.message).toBe(AI_ERROR_HINTS[e.code])
+    }
+    expect(errorForStatus(404, 'no endpoints found matching your data policy').message).toBe(
+      AI_ERROR_HINTS['no-private-route']
+    )
+    expect(asNetworkError(new Error('getaddrinfo ENOTFOUND')).message).toBe(
+      AI_ERROR_HINTS['network']
+    )
   })
 })
 

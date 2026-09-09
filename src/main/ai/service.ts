@@ -104,10 +104,17 @@ function fail(code: AiErrorCode, message: string): SendChatResult {
 /** Accepts either frame kind, and nothing else. */
 function parseLensSelection(value: unknown): LensSelection | null {
   if (value == null || typeof value !== 'object') return null
-  const v = value as Partial<LensSelection> & { lens?: unknown; frameworkId?: unknown }
+  const v = value as Partial<LensSelection> & {
+    lens?: unknown
+    frameworkId?: unknown
+    roleModelId?: unknown
+  }
   if (v.kind === 'builtin' && isLensKind(v.lens)) return { kind: 'builtin', lens: v.lens }
   if (v.kind === 'borrowed' && typeof v.frameworkId === 'string' && v.frameworkId) {
     return { kind: 'borrowed', frameworkId: v.frameworkId }
+  }
+  if (v.kind === 'person' && typeof v.roleModelId === 'string' && v.roleModelId) {
+    return { kind: 'person', roleModelId: v.roleModelId }
   }
   return null
 }

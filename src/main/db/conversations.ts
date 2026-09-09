@@ -77,6 +77,7 @@ function parseLens(raw: string | null): LensSelection | null {
     const parsed = JSON.parse(raw) as LensSelection
     if (parsed?.kind === 'builtin' && isLensKind(parsed.lens)) return parsed
     if (parsed?.kind === 'borrowed' && typeof parsed.frameworkId === 'string') return parsed
+    if (parsed?.kind === 'person' && typeof parsed.roleModelId === 'string') return parsed
   } catch {
     // fall through
   }

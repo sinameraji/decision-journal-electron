@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { LENS_KINDS, LENS_LABELS, LENS_OPENERS, isLensKind } from '@shared/ipc-contract'
 import { lensInstruction } from '../lensPrompts'
+import { borrowedPersonInstruction } from '../../rolemodels/prompt'
 
 const decisions = vi.hoisted(() => ({ store: new Map<string, unknown>(), all: [] as unknown[] }))
 
@@ -126,5 +127,36 @@ describe('a borrowed framework is resolved the same way', () => {
       lens: { kind: 'builtin', lens: 'pre-mortem' }
     })
     expect(built.lensLabel).toBe(LENS_LABELS['pre-mortem'])
+  })
+})
+
+/**
+ * A person's whole toolkit is its own frame. Picking one framework is a sharp
+ * instrument; picking the person asks how they would approach the decision at
+ * all, which is usually the first question.
+ */
+describe('the whole-person frame', () => {
+  it('is a distinct selection kind', () => {
+    const selection = { kind: 'person' as const, roleModelId: 'rm1' }
+    expect(selection.kind).toBe('person')
+    expect('frameworkId' in selection).toBe(false)
+  })
+
+  it('asks the coach to pick the frames that apply rather than run all of them', () => {
+    const text = borrowedPersonInstruction('Ibn Sina', [
+      { name: 'A', instruction: 'do a' },
+      { name: 'B', instruction: 'do b' },
+      { name: 'C', instruction: 'do c' }
+    ])
+    expect(text).toMatch(/genuinely bite/i)
+    expect(text).toMatch(/not all of them/i)
+    expect(text).toMatch(/name which you are applying/i)
+  })
+
+  it('keeps the frames attributed and warns against copying circumstances', () => {
+    const text = borrowedPersonInstruction('Ibn Sina', [{ name: 'A', instruction: 'do a' }])
+    expect(text).toMatch(/interpretation of their approach/i)
+    expect(text).toMatch(/do not assume their circumstances are the user's/i)
+    expect(text).toContain('Ibn Sina')
   })
 })

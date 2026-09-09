@@ -13,12 +13,14 @@
 import type Database from 'better-sqlite3-multiple-ciphers'
 import { BrowserWindow } from 'electron'
 import type { RoleModelCandidate, RoleModelResult } from '@shared/roleModels'
-import { MAX_DISAMBIGUATION_ROUNDS } from '@shared/roleModels'
+import { DEFAULT_ROLE_MODEL_MODEL, MAX_DISAMBIGUATION_ROUNDS } from '@shared/roleModels'
 import { getCachedCatalog } from '../ai/catalog'
 import { readOpenRouterKey } from '../ai/credentials'
 import { loadOnlineSettings } from '../ai/settings'
 import { OpenRouterError, streamChatCompletion } from '../ai/openrouterClient'
 import {
+  SOURCE_INSTRUCTION,
+  SOURCE_RESPONSE_FORMAT,
   FRAMEWORKS_INSTRUCTION,
   FRAMEWORKS_RESPONSE_FORMAT,
   IDENTIFY_INSTRUCTION,
@@ -27,7 +29,7 @@ import {
   PROFILE_RESPONSE_FORMAT
 } from './prompt'
 import * as store from './store'
-import { validateCandidates, validateProfile } from './validate'
+import { isUsableSource, validateCandidates, validateProfile } from './validate'
 
 export interface RoleModelHost {
   db(): Database.Database | null
@@ -53,15 +55,21 @@ function notify(): void {
 const inFlight = new Set<string>()
 
 /** Shared preflight: online on, key present, ZDR-capable model. */
+/** Models with few zero-data-retention routes have no headroom when one is busy. */
+const THIN_ROUTE_THRESHOLD = 4
+
 async function ready(
   db: Database.Database
-): Promise<{ ok: true; apiKey: string; modelId: string } | { ok: false; error: string }> {
+): Promise<
+  | { ok: true; apiKey: string; modelId: string; thinRoutes: boolean; modelName: string }
+  | { ok: false; error: string }
+> {
   const online = await loadOnlineSettings()
   if (!online.enabled) return { ok: false, error: 'Online AI is off.' }
   const apiKey = await readOpenRouterKey()
   if (!apiKey) return { ok: false, error: 'No OpenRouter API key is saved.' }
 
-  const modelId = store.getModel(db, online.defaultModel)
+  const modelId = store.getModel(db, DEFAULT_ROLE_MODEL_MODEL)
   const catalog = await getCachedCatalog()
   const model = catalog.models.find((m) => m.id === modelId)
   // Same rule as memory extraction: a background lookup is not a moment where
@@ -72,7 +80,15 @@ async function ready(
       error: `${model.name} has no provider enforcing zero data retention. Pick another model in Settings.`
     }
   }
-  return { ok: true, apiKey, modelId }
+  return {
+    ok: true,
+    apiKey,
+    modelId,
+    modelName: model?.name ?? modelId,
+    // An unknown count means we cannot claim the model is well served, so treat
+    // it as thin rather than staying silent.
+    thinRoutes: model ? (model.zdrProviderCount ?? 0) < THIN_ROUTE_THRESHOLD : false
+  }
 }
 
 async function askModel(params: {
@@ -102,8 +118,16 @@ async function askModel(params: {
   return JSON.parse(body)
 }
 
-function describe(err: unknown): string {
-  if (err instanceof OpenRouterError) return err.message
+function describe(err: unknown, pre?: { thinRoutes: boolean; modelName: string }): string {
+  if (err instanceof OpenRouterError) {
+    // A lookup fires three search-backed calls in a row, so a model served by
+    // only a couple of private routes runs out of headroom long before a chat
+    // would. Say which model, and that a better-served one exists.
+    if (err.code === 'rate-limited' && pre?.thinRoutes) {
+      return `${err.message} ${pre.modelName} is served by only a few zero-data-retention providers, and a lookup makes several searches in a row. Choose a model with more of them in Settings → Role models.`
+    }
+    return err.message
+  }
   if (err instanceof SyntaxError) return 'The lookup did not return usable data.'
   return 'The lookup failed.'
 }
@@ -132,6 +156,7 @@ export async function identify(id: string, hint: string | null): Promise<void> {
   if (!db || inFlight.has(id)) return
   const vaultAtStart = host?.vaultGeneration() ?? 0
   inFlight.add(id)
+  let preflight: { thinRoutes: boolean; modelName: string } | undefined
 
   try {
     const model = store.get(db, id)
@@ -156,6 +181,7 @@ export async function identify(id: string, hint: string | null): Promise<void> {
       return
     }
 
+    preflight = { thinRoutes: pre.thinRoutes, modelName: pre.modelName }
     store.setStatus(db, id, 'identifying')
     notify()
 
@@ -198,7 +224,7 @@ export async function identify(id: string, hint: string | null): Promise<void> {
   } catch (err) {
     const currentDb = host?.db()
     if (currentDb && host?.vaultGeneration() === vaultAtStart) {
-      store.setStatus(currentDb, id, 'error', describe(err))
+      store.setStatus(currentDb, id, 'error', describe(err, preflight))
       notify()
     }
   } finally {
@@ -239,6 +265,7 @@ export async function buildProfile(id: string): Promise<void> {
   if (!db || inFlight.has(id)) return
   const vaultAtStart = host?.vaultGeneration() ?? 0
   inFlight.add(id)
+  let preflight: { thinRoutes: boolean; modelName: string } | undefined
 
   try {
     const model = store.get(db, id)
@@ -251,6 +278,7 @@ export async function buildProfile(id: string): Promise<void> {
       return
     }
 
+    preflight = { thinRoutes: pre.thinRoutes, modelName: pre.modelName }
     store.setStatus(db, id, 'building')
     notify()
 
@@ -308,10 +336,138 @@ export async function buildProfile(id: string): Promise<void> {
   } catch (err) {
     const currentDb = host?.db()
     if (currentDb && host?.vaultGeneration() === vaultAtStart) {
-      store.setStatus(currentDb, id, 'error', describe(err))
+      store.setStatus(currentDb, id, 'error', describe(err, preflight))
       notify()
     }
   } finally {
     inFlight.delete(id)
   }
+}
+
+/**
+ * Reads one document the user pointed at and appends what it adds.
+ *
+ * Someone with decades of published work cannot be captured by a single
+ * lookup, so a profile grows: the user hands it an essay or a speech, and only
+ * what that document actually supports is added. Retrieval is done by the
+ * search plugin rather than by fetching the URL ourselves — that would mean
+ * opening the network gate to any host the user pastes, which is a far larger
+ * concession than this feature is worth.
+ */
+export async function addSource(id: string, url: string): Promise<RoleModelResult> {
+  const db = host?.db()
+  if (!db) return { ok: false, error: 'Journal is locked.' }
+  const trimmed = url.trim()
+  if (!isUsableSource(trimmed)) return { ok: false, error: 'That is not a web link.' }
+
+  const model = store.get(db, id)
+  if (!model || !model.name) return { ok: false, error: 'Finish identifying this person first.' }
+  if (store.sourceAlreadyAdded(db, id, trimmed)) {
+    return { ok: false, error: 'That source has already been read.' }
+  }
+
+  const sourceId = store.beginSource(db, id, trimmed)
+  notify()
+  void ingest(id, sourceId, trimmed, model.name)
+  return { ok: true }
+}
+
+async function ingest(
+  roleModelId: string,
+  sourceId: string,
+  url: string,
+  personName: string
+): Promise<void> {
+  const db = host?.db()
+  if (!db) return
+  const vaultAtStart = host?.vaultGeneration() ?? 0
+  let preflight: { thinRoutes: boolean; modelName: string } | undefined
+
+  try {
+    const pre = await ready(db)
+    if (!pre.ok) {
+      store.failSource(db, sourceId, pre.error)
+      notify()
+      return
+    }
+    preflight = { thinRoutes: pre.thinRoutes, modelName: pre.modelName }
+
+    const existing = store.get(db, roleModelId)
+    const already = (existing?.claims ?? []).map((c) => `- ${c.text}`).join('\n').slice(0, 4000)
+
+    const raw = await askModel({
+      apiKey: pre.apiKey,
+      modelId: pre.modelId,
+      system: SOURCE_INSTRUCTION,
+      user: [
+        `Person: ${personName}`,
+        `Document to read: ${url}`,
+        '',
+        already ? `The profile already contains:\n${already}` : 'The profile is currently empty.'
+      ].join('\n'),
+      responseFormat: SOURCE_RESPONSE_FORMAT,
+      maxResults: 4
+    })
+
+    if (host?.vaultGeneration() !== vaultAtStart) return
+    const currentDb = host?.db()
+    if (!currentDb) return
+
+    const body = raw as { retrieved?: unknown; title?: unknown }
+    if (body.retrieved === false) {
+      store.failSource(
+        currentDb,
+        sourceId,
+        'That page could not be read. It may be paywalled, blocked, or not indexed — try a different link to the same piece.'
+      )
+      notify()
+      return
+    }
+
+    const parsed = validateProfile(raw)
+    // Everything here comes from a document the user chose, so a claim citing
+    // something else is not this source speaking and is not added.
+    const fromThisSource = parsed.claims.filter((c) => sameDocument(c.sourceUrl, url))
+    const frameworks = parsed.frameworks.filter(
+      (f) => f.sourceUrl === null || sameDocument(f.sourceUrl, url)
+    )
+
+    if (fromThisSource.length === 0 && frameworks.length === 0) {
+      store.failSource(
+        currentDb,
+        sourceId,
+        'Nothing new was found in that document — either it repeats what is already recorded, or it says nothing about how they decide.'
+      )
+      notify()
+      return
+    }
+
+    store.appendFromSource(currentDb, {
+      roleModelId,
+      sourceId,
+      title: typeof body.title === 'string' ? body.title.slice(0, 160) : null,
+      claims: fromThisSource.map((c) => ({ ...c, sourceUrl: url })),
+      frameworks: frameworks.map((f) => ({ ...f, sourceUrl: url }))
+    })
+    notify()
+  } catch (err) {
+    const currentDb = host?.db()
+    if (currentDb && host?.vaultGeneration() === vaultAtStart) {
+      store.failSource(currentDb, sourceId, describe(err, preflight))
+      notify()
+    }
+  }
+}
+
+/** Same page, ignoring trailing slashes, query strings and fragments. */
+function sameDocument(a: string, b: string): boolean {
+  const key = (u: string): string => {
+    try {
+      const p = new URL(u)
+      return `${p.hostname.replace(/^www\./, '')}${p.pathname.replace(/\/$/, '')}`.toLowerCase()
+    } catch {
+      return u.toLowerCase()
+    }
+  }
+  return key(a) === key(b)
 }

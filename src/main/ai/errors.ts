@@ -4,6 +4,7 @@
  */
 
 import type { AiErrorCode } from '@shared/ai'
+import { AI_ERROR_HINTS } from '@shared/ai'
 
 export class OpenRouterError extends Error {
   constructor(
@@ -13,6 +14,18 @@ export class OpenRouterError extends Error {
     super(message)
     this.name = 'OpenRouterError'
   }
+}
+
+/**
+ * Builds an error whose message defaults to the shared hint for its code.
+ *
+ * These used to be two independent strings — a hint map and a hand-written
+ * message at each throw site — and they drifted: the hint was corrected to say
+ * the *provider* was rate-limiting, while the message the user actually saw
+ * still blamed their API key. One source of truth per code prevents that.
+ */
+function make(code: AiErrorCode, message?: string): OpenRouterError {
+  return new OpenRouterError(code, message ?? AI_ERROR_HINTS[code])
 }
 
 /**
@@ -27,45 +40,31 @@ export function errorForStatus(status: number, body: string): OpenRouterError {
     lower.includes('no endpoints found') ||
     lower.includes('zdr')
   ) {
-    return new OpenRouterError(
-      'no-private-route',
-      'No zero-data-retention route is available for this model right now.'
-    )
+    return make('no-private-route')
   }
   if (lower.includes('context length') || lower.includes('maximum context')) {
-    return new OpenRouterError(
-      'context-too-large',
-      'The request is longer than this model can accept.'
-    )
+    return make('context-too-large')
   }
   switch (status) {
     case 401:
-      return new OpenRouterError('invalid-key', 'OpenRouter rejected the API key.')
+      return make('invalid-key')
     case 402:
-      return new OpenRouterError(
-        'insufficient-credit',
-        'Your OpenRouter account is out of credit.'
-      )
+      return make('insufficient-credit')
     case 408:
-      return new OpenRouterError('timeout', 'OpenRouter timed out.')
+      return make('timeout')
     case 429:
-      return new OpenRouterError('rate-limited', 'OpenRouter is rate-limiting this key.')
+      return make('rate-limited')
     default:
       if (status >= 500) {
-        return new OpenRouterError(
-          'provider',
-          'OpenRouter or the model provider is unavailable.'
-        )
+        return make('provider', 'OpenRouter or the model provider is unavailable.')
       }
-      return new OpenRouterError('provider', `OpenRouter returned an error (HTTP ${status}).`)
+      return make('provider', `OpenRouter returned an error (HTTP ${status}).`)
   }
 }
 
 export function asNetworkError(err: unknown): OpenRouterError {
   if (err instanceof OpenRouterError) return err
   const message = err instanceof Error ? err.message : String(err)
-  if (/timed? ?out|timeout/i.test(message)) {
-    return new OpenRouterError('timeout', 'OpenRouter did not respond in time.')
-  }
-  return new OpenRouterError('network', 'Could not reach OpenRouter.')
+  if (/timed? ?out|timeout/i.test(message)) return make('timeout')
+  return make('network')
 }
