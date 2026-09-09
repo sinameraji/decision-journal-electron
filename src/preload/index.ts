@@ -5,6 +5,8 @@ import type {
   ConversationSummary,
   Decision,
   DecisionCreateInput,
+  DecisionDraft,
+  DecisionDraftInput,
   DecisionReviewInput,
   DecisionUpdateInput,
   ExportResult,
@@ -85,7 +87,13 @@ const api: Api = {
       ipcRenderer.invoke('decisions:review', id, input),
     delete: (id: string): Promise<void> => ipcRenderer.invoke('decisions:delete', id),
     setMemoryExcluded: (id: string, excluded: boolean): Promise<void> =>
-      ipcRenderer.invoke('decisions:set-memory-excluded', id, excluded)
+      ipcRenderer.invoke('decisions:set-memory-excluded', id, excluded),
+    getDraft: (key: string): Promise<DecisionDraft | null> =>
+      ipcRenderer.invoke('decisions:get-draft', key),
+    saveDraft: (input: DecisionDraftInput): Promise<void> =>
+      ipcRenderer.invoke('decisions:save-draft', input),
+    clearDraft: (key: string): Promise<void> =>
+      ipcRenderer.invoke('decisions:clear-draft', key)
   },
   conversations: {
     list: (): Promise<ConversationSummary[]> => ipcRenderer.invoke('conversations:list'),

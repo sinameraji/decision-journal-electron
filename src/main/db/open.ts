@@ -320,6 +320,23 @@ const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_role_model_added_sources_owner
         ON role_model_added_sources(role_model_id, created_at DESC);
     `
+  },
+  {
+    // In-progress decisions, so leaving the form is not the same as throwing
+    // the work away. These live in the encrypted database rather than in
+    // renderer storage because a half-written decision is journal content and
+    // deserves the same protection as a saved one.
+    version: 11,
+    sql: `
+      CREATE TABLE IF NOT EXISTS decision_drafts (
+        key             TEXT PRIMARY KEY,
+        form            TEXT NOT NULL,
+        step            INTEGER NOT NULL DEFAULT 1,
+        base_updated_at INTEGER,
+        created_at      INTEGER NOT NULL,
+        updated_at      INTEGER NOT NULL
+      );
+    `
   }
 ]
 
@@ -385,6 +402,12 @@ const REQUIRED_COLUMNS: { table: string; column: string; definition: string }[] 
 
 /** Tables the current code needs, with the SQL to recreate an absent one. */
 const REQUIRED_TABLES: { name: string; sql: string }[] = [
+  {
+    name: 'decision_drafts',
+    sql: `CREATE TABLE IF NOT EXISTS decision_drafts (
+      key TEXT PRIMARY KEY, form TEXT NOT NULL, step INTEGER NOT NULL DEFAULT 1,
+      base_updated_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`
+  },
   {
     name: 'memory_items',
     sql: `CREATE TABLE IF NOT EXISTS memory_items (

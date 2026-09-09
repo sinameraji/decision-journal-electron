@@ -30,6 +30,8 @@ import { isMemoryCategory } from '@shared/memory'
 import type {
   CatalogModel,
   DecisionCreateInput,
+  DecisionDraft,
+  DecisionDraftInput,
   DecisionReviewInput,
   DecisionUpdateInput,
   ExportResult,
@@ -58,6 +60,7 @@ import {
   searchDecisions,
   updateDecision
 } from './db/decisions'
+import { clearDraft, getDraft, saveDraft } from './db/drafts'
 import {
   deleteConversation,
   getConversation,
@@ -491,6 +494,9 @@ export function registerIpcHandlers(): void {
     deleteDecision(session.db, id)
     // Sources cascade with the row; drop any memory left with no support.
     pruneOrphanedItems(session.db)
+    // An edit draft for a decision that no longer exists can never be applied,
+    // and nothing else would ever clear it.
+    clearDraft(session.db, id)
   })
 
   ipcMain.handle(
@@ -501,6 +507,35 @@ export function registerIpcHandlers(): void {
       setDecisionExcluded(session.db, id, excluded === true)
     }
   )
+
+  ipcMain.handle(
+    'decisions:get-draft',
+    async (_evt, key: string): Promise<DecisionDraft | null> => {
+      if (!session.db) return null
+      if (typeof key !== 'string' || key === '') return null
+      return getDraft(session.db, key)
+    }
+  )
+
+  ipcMain.handle('decisions:save-draft', async (_evt, input: DecisionDraftInput): Promise<void> => {
+    // A locked vault is not an error here: autosave fires on a timer, and the
+    // vault can lock under it. Dropping the write is right — the draft belongs
+    // in the encrypted database or nowhere.
+    if (!session.db) return
+    if (!input || typeof input.key !== 'string' || typeof input.form !== 'string') return
+    saveDraft(session.db, {
+      key: input.key,
+      form: input.form,
+      step: Number.isFinite(input.step) ? input.step : 1,
+      baseUpdatedAt: typeof input.baseUpdatedAt === 'number' ? input.baseUpdatedAt : null
+    })
+  })
+
+  ipcMain.handle('decisions:clear-draft', async (_evt, key: string): Promise<void> => {
+    if (!session.db) return
+    if (typeof key !== 'string' || key === '') return
+    clearDraft(session.db, key)
+  })
 
   // ---------------- Conversations ----------------
 
