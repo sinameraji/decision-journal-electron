@@ -179,6 +179,30 @@ export type DecisionCreateInput = Pick<
 
 export type DecisionUpdateInput = Partial<DecisionCreateInput>
 
+/**
+ * A decision that is being written but has not been saved.
+ *
+ * `form` is the form's own serialized state rather than a DecisionCreateInput,
+ * because a draft has to survive being half-filled: which step you were on,
+ * options with no name yet, a review date you have not touched. Parsing it
+ * back is the form's business.
+ */
+export interface DecisionDraft {
+  /** 'new' for the create form, or the id of the decision being edited. */
+  key: string
+  form: string
+  step: number
+  /** The decision's updatedAt when an edit draft began; null for a new one. */
+  baseUpdatedAt: number | null
+  createdAt: number
+  updatedAt: number
+}
+
+export type DecisionDraftInput = Pick<DecisionDraft, 'key' | 'form' | 'step' | 'baseUpdatedAt'>
+
+/** The draft key for the create form. Not a valid decision id, so it cannot collide. */
+export const NEW_DECISION_DRAFT_KEY = 'new'
+
 export type DecisionReviewInput = Pick<Decision, 'outcome' | 'lessonsLearned'>
 
 export interface DecisionOption {
@@ -345,6 +369,9 @@ export interface Api {
     delete(id: string): Promise<void>
     /** Per-decision opt-out from online memory extraction. */
     setMemoryExcluded(id: string, excluded: boolean): Promise<void>
+    getDraft(key: string): Promise<DecisionDraft | null>
+    saveDraft(input: DecisionDraftInput): Promise<void>
+    clearDraft(key: string): Promise<void>
   }
   conversations: {
     list(): Promise<ConversationSummary[]>

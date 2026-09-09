@@ -11,93 +11,33 @@ import { ArrowLeft, Check, Plus, Trash2 } from 'lucide-react'
 import {
   MENTAL_STATES,
   MENTAL_STATE_LABELS,
+  NEW_DECISION_DRAFT_KEY,
   parseAlternatives,
   serializeOptions,
   type Decision,
   type DecisionCreateInput,
+  type DecisionDraftInput,
   type DecisionOption,
   type MentalState
 } from '@shared/ipc-contract'
+import {
+  AUTOSAVE_DELAY_MS,
+  emptyForm,
+  fromLocalDate,
+  fromLocalDateTime,
+  hasContent,
+  makeBlankOption,
+  parseDraft,
+  SIX_MONTHS_MS,
+  STEPS,
+  toLocalDateString,
+  toLocalDateTimeString,
+  type FormState
+} from './decisionDraft'
 import { DatePicker, DateTimePicker } from '../components/DateTimePicker'
 import MicButton from '../components/voice/MicButton'
 
 type Mode = 'create' | 'edit'
-
-interface FormState {
-  title: string
-  decidedAtLocal: string // YYYY-MM-DDTHH:mm
-  reviewAtLocal: string // YYYY-MM-DD
-  reviewAtTouched: boolean
-  mentalState: MentalState[]
-  situation: string
-  problemStatement: string
-  variables: string
-  complications: string
-  options: DecisionOption[]
-  migratedFromLegacy: boolean
-  rangeOfOutcomes: string
-  expectedOutcome: string
-  memoryExcluded: boolean
-}
-
-function makeBlankOption(chosen = false): DecisionOption {
-  return { id: crypto.randomUUID(), name: '', note: '', chosen }
-}
-
-const SIX_MONTHS_MS = 1000 * 60 * 60 * 24 * 182
-
-const STEPS = [
-  { index: 1, label: 'The decision' },
-  { index: 2, label: 'The situation' },
-  { index: 3, label: 'The analysis' },
-  { index: 4, label: 'The options' }
-] as const
-
-function pad(n: number): string {
-  return n.toString().padStart(2, '0')
-}
-
-function toLocalDateTimeString(ms: number): string {
-  const d = new Date(ms)
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
-    d.getHours()
-  )}:${pad(d.getMinutes())}`
-}
-
-function toLocalDateString(ms: number): string {
-  const d = new Date(ms)
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-}
-
-function fromLocalDateTime(s: string): number {
-  const ms = new Date(s).getTime()
-  return Number.isFinite(ms) ? ms : Date.now()
-}
-
-function fromLocalDate(s: string): number {
-  const ms = new Date(`${s}T12:00`).getTime()
-  return Number.isFinite(ms) ? ms : Date.now()
-}
-
-function emptyForm(): FormState {
-  const now = Date.now()
-  return {
-    title: '',
-    decidedAtLocal: toLocalDateTimeString(now),
-    reviewAtLocal: toLocalDateString(now + SIX_MONTHS_MS),
-    reviewAtTouched: false,
-    mentalState: [],
-    situation: '',
-    problemStatement: '',
-    variables: '',
-    complications: '',
-    options: [makeBlankOption(), makeBlankOption()],
-    migratedFromLegacy: false,
-    rangeOfOutcomes: '',
-    expectedOutcome: '',
-    memoryExcluded: false
-  }
-}
 
 function decisionToForm(d: Decision): FormState {
   const parsed = parseAlternatives(d.alternatives)
@@ -159,23 +99,72 @@ export default function DecisionForm({ mode }: { mode: Mode }) {
   const [form, setForm] = useState<FormState>(() => emptyForm())
   const initialFormRef = useRef<FormState>(form)
   const [step, setStep] = useState(1)
-  const [loading, setLoading] = useState(mode === 'edit')
+  // Both modes start loading: the create form checks for a draft first, so it
+  // fills in rather than flashing empty and then rewriting itself.
+  const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [discardOpen, setDiscardOpen] = useState(false)
+  const [draftRestored, setDraftRestored] = useState(false)
+  const [draftSaved, setDraftSaved] = useState(false)
+
+  const draftKey = mode === 'create' ? NEW_DECISION_DRAFT_KEY : (id ?? '')
+  /** The decision's updatedAt when an edit began, so a stale draft is detected. */
+  const baseUpdatedAtRef = useRef<number | null>(null)
+  /** The write the debounce has not made yet, so leaving flushes it. */
+  const pendingRef = useRef<DecisionDraftInput | null>(null)
 
   useEffect(() => {
-    if (mode !== 'edit' || !id) return
     let cancelled = false
-    window.api.decisions.get(id).then((d) => {
-      if (cancelled || !d) {
-        if (!cancelled) navigate('/decisions', { replace: true })
+
+    async function restore(raw: string | undefined, atStep: number): Promise<boolean> {
+      if (raw === undefined) return false
+      const f = parseDraft(raw)
+      if (!f || cancelled) return false
+      setForm(f)
+      setStep(Math.min(Math.max(Math.round(atStep) || 1, 1), STEPS.length))
+      setDraftRestored(true)
+      return true
+    }
+
+    async function boot(): Promise<void> {
+      if (mode === 'edit') {
+        if (!id) return
+        const d = await window.api.decisions.get(id)
+        if (cancelled) return
+        if (!d) {
+          navigate('/decisions', { replace: true })
+          return
+        }
+        const saved = decisionToForm(d)
+        initialFormRef.current = saved
+        baseUpdatedAtRef.current = d.updatedAt
+        setForm(saved)
+
+        const draft = await window.api.decisions.getDraft(id)
+        if (cancelled) return
+        // A draft taken against an older version of the decision describes text
+        // that no longer exists. Restoring it would quietly revert whatever
+        // replaced it, so it is dropped instead.
+        if (draft && draft.baseUpdatedAt === d.updatedAt) {
+          await restore(draft.form, draft.step)
+        } else if (draft) {
+          void window.api.decisions.clearDraft(id)
+        }
+        setLoading(false)
         return
       }
-      const f = decisionToForm(d)
-      setForm(f)
-      initialFormRef.current = f
+
+      const draft = await window.api.decisions.getDraft(NEW_DECISION_DRAFT_KEY)
+      if (cancelled) return
+      if (draft) await restore(draft.form, draft.step)
       setLoading(false)
+    }
+
+    boot().catch(() => {
+      // A draft that cannot be read must not block writing a new decision.
+      if (!cancelled) setLoading(false)
     })
+
     return () => {
       cancelled = true
     }
@@ -226,6 +215,59 @@ export default function DecisionForm({ mode }: { mode: Mode }) {
       JSON.stringify(a.options) !== JSON.stringify(form.options)
     )
   }, [form])
+
+  useEffect(() => {
+    if (loading || saving || draftKey === '') return
+    if (!isDirty || !hasContent(form)) return
+
+    const payload: DecisionDraftInput = {
+      key: draftKey,
+      form: JSON.stringify(form),
+      step,
+      baseUpdatedAt: baseUpdatedAtRef.current
+    }
+    pendingRef.current = payload
+
+    const t = setTimeout(() => {
+      pendingRef.current = null
+      window.api.decisions
+        .saveDraft(payload)
+        .then(() => setDraftSaved(true))
+        .catch(() => {
+          // Saying nothing is right: the draft is a safety net, and a failed
+          // write must not interrupt someone mid-sentence. The decision itself
+          // is still saved by the button they are about to press.
+        })
+    }, AUTOSAVE_DELAY_MS)
+
+    return () => clearTimeout(t)
+  }, [form, step, loading, saving, isDirty, draftKey])
+
+  // Leaving the form is the case this whole feature exists for: switching tabs
+  // unmounts it, and whatever the debounce had not written yet would be gone.
+  useEffect(() => {
+    return () => {
+      const pending = pendingRef.current
+      if (pending) void window.api.decisions.saveDraft(pending)
+    }
+  }, [])
+
+  const startOver = useCallback(() => {
+    pendingRef.current = null
+    if (draftKey !== '') void window.api.decisions.clearDraft(draftKey)
+    setDraftRestored(false)
+    setDraftSaved(false)
+    // Editing returns to the decision as saved; creating returns to blank.
+    const fresh = mode === 'edit' ? initialFormRef.current : emptyForm()
+    if (mode === 'create') initialFormRef.current = fresh
+    setForm(fresh)
+    setStep(1)
+  }, [draftKey, mode])
+
+  const forgetDraft = useCallback(() => {
+    pendingRef.current = null
+    if (draftKey !== '') void window.api.decisions.clearDraft(draftKey)
+  }, [draftKey])
 
   const updateOption = useCallback(
     (id: string, patchFields: Partial<Pick<DecisionOption, 'name' | 'note' | 'chosen'>>) => {
@@ -283,6 +325,9 @@ export default function DecisionForm({ mode }: { mode: Mode }) {
       } else if (id) {
         await window.api.decisions.update(id, input)
       }
+      // The draft has served its purpose; leaving it would offer the decision
+      // back as unfinished the next time the form is opened.
+      forgetDraft()
       navigate('/decisions')
     } catch (err) {
       console.error('save decision failed', err)
@@ -317,6 +362,26 @@ export default function DecisionForm({ mode }: { mode: Mode }) {
           </p>
         </div>
       </div>
+
+      {(draftRestored || draftSaved) && (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-border bg-bg-elevated px-3.5 py-2.5">
+          <span className="flex items-center gap-2 text-[12.5px] text-text-muted">
+            {!draftRestored && <Check size={13} strokeWidth={2} />}
+            {draftRestored
+              ? 'Picked up where you left off.'
+              : 'Draft saved. You can leave and come back.'}
+          </span>
+          {draftRestored && (
+            <button
+              type="button"
+              onClick={startOver}
+              className="shrink-0 rounded-md border border-border bg-bg px-2.5 py-1 text-[12px] text-text-muted hover:text-text"
+            >
+              {mode === 'edit' ? 'Discard draft' : 'Start over'}
+            </button>
+          )}
+        </div>
+      )}
 
       <StepBar step={step} totalSteps={STEPS.length} label={current.label} />
 
@@ -487,11 +552,14 @@ export default function DecisionForm({ mode }: { mode: Mode }) {
 
       {discardOpen && (
         <ConfirmModal
-          title="Discard changes?"
-          description="You have unsaved edits. Leaving will lose them."
+          title="Discard this draft?"
+          description="Your unsaved writing is kept until you discard it. This deletes it."
           confirmLabel="Discard"
           onCancel={() => setDiscardOpen(false)}
-          onConfirm={() => navigate('/decisions')}
+          onConfirm={() => {
+            forgetDraft()
+            navigate('/decisions')
+          }}
         />
       )}
     </div>
