@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.10.0](https://github.com/sinameraji/decision-journal-electron/compare/v0.9.0...v0.10.0) (2026-09-09)
+
+
+### Features
+
+* offer Backup vault in Settings, not only the profile menu ([9ad8845](https://github.com/sinameraji/decision-journal-electron/commit/9ad884522d640d73a0d7b55f9e4f155c8ac3df65))
+* offer Backup vault in Settings, not only the profile menu ([35a1f7f](https://github.com/sinameraji/decision-journal-electron/commit/35a1f7fb014dcaa468d5aaaaa779553632443130))
+
+
+### Bug Fixes
+
+* role-model and chat fixes found by using the app ([3cde71c](https://github.com/sinameraji/decision-journal-electron/commit/3cde71ce05c2a92108aac2eeea04461b92c321ef))
+* role-model and chat fixes found by using the app ([f40560f](https://github.com/sinameraji/decision-journal-electron/commit/f40560f630a0c20388a8eb9a51aacb71d1b64417))
+
 ## [0.9.0](https://github.com/sinameraji/decision-journal-electron/compare/v0.8.0...v0.9.0) (2026-09-09)
 
 
